@@ -125,7 +125,7 @@
 #define DLC_SET_PULSE_TIME      0x14 /* Setup value for time of make and break periods when
                                       * pulse dialing. (Optional)
                                       */
-#define DLC_RING_AUX_JACK       0x15 /* Request for a ring signal to be generated on secondary 
+#define DLC_RING_AUX_JACK       0x15 /* Request for a ring signal to be generated on secondary
                                       * phone jack. (Optional)
                                       */
 /* Table 3: Notifications, Direct Line Control Model */
@@ -169,7 +169,7 @@
 #define ACM_NETWORK_CONNECTION  0x00 /* Notification to host of network connection status.
                                       * (Optional)
                                       */
-#define ACM_RESPONSE_AVAILABLE  0x01 /* Notification to host to issue a GET_ENCAPSULATED_RESPONSE 
+#define ACM_RESPONSE_AVAILABLE  0x01 /* Notification to host to issue a GET_ENCAPSULATED_RESPONSE
                                       * request. (Required)
                                       */
 #define ACM_SERIAL_STATE        0x20 /* Returns the current state of the carrier detect, DSR,
@@ -855,6 +855,22 @@ struct cdc_linestatus_s
   uint8_t ringer[4]; /* dwRingerBitmap, Ringer Configuration bitmap for this line */
   uint8_t line[4];   /* dwLineState, Defines current state of the line */
   uint32_t call[1];  /* dwCallStateN, Defines current state of call N on the line */
+};
+
+/* Messages are formatted as a standardized 8-byte header, followed by a variable-length
+ * data field. The header identifies the kind of notification, and the interface associated
+ * with the notification; it also indicates the length of the variable length portion of
+ * the message
+ */
+
+struct cdc_notification_s
+{
+  uint8_t type;                /* bmRequestType */
+  uint8_t notification;        /* bNotification */
+  uint8_t value[2];            /* wValue */
+  uint8_t index[2];            /* wIndex - interface */
+  uint8_t len[2];              /* wLength - length of variable data */
+  uint8_t data[1];             /* Variable length data begins here */
 };
 
 /* Table 60: Unit Parameter Structure */

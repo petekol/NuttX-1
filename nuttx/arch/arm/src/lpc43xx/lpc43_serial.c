@@ -61,7 +61,6 @@
 
 #include "chip.h"
 #include "up_arch.h"
-#include "os_internal.h"
 #include "up_internal.h"
 
 #include "lpc43_config.h"
@@ -363,7 +362,7 @@ static uart_dev_t g_uart3port =
 #  elif defined(CONFIG_USART2_SERIAL_CONSOLE)
 #    define CONSOLE_DEV     g_uart2port     /* USART2=console */
 #    define TTYS0_DEV       g_uart2port     /* USART2=ttyS0 */
-#    ifdef CONFIG_LPC43_USART2
+#    ifdef CONFIG_LPC43_USART0
 #      define TTYS1_DEV     g_uart0port     /* USART2=ttyS0;USART0=ttyS1 */
 #      ifdef CONFIG_LPC43_UART1
 #        define TTYS2_DEV   g_uart1port     /* USART2=ttyS0;USART0=ttyS1;UART1=ttyS2 */
@@ -478,7 +477,7 @@ static uart_dev_t g_uart3port =
 #      undef TTYS3_DEV                    /* No ttyS3 */
 #    endif
 #  endif
-#endif /*HAVE_CONSOLE*/
+#endif /* HAVE_CONSOLE */
 
 /****************************************************************************
  * Inline Functions
@@ -560,17 +559,17 @@ static inline void up_enablebreaks(struct up_dev_s *priv, bool enable)
 
 static int up_setup(struct uart_dev_s *dev)
 {
-#ifndef CONFIG_SUPPRESS_LPC43_UART_CONFIG
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+#ifndef CONFIG_SUPPRESS_UART_CONFIG
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   uint32_t lcr;
 
   /* Clear fifos */
 
-  up_serialout(priv, LPC43_UART_FCR_OFFSET, (UART_FCR_RXRST|UART_FCR_TXRST));
+  up_serialout(priv, LPC43_UART_FCR_OFFSET, (UART_FCR_RXRST | UART_FCR_TXRST));
 
   /* Set trigger */
 
-  up_serialout(priv, LPC43_UART_FCR_OFFSET, (UART_FCR_FIFOEN|UART_FCR_RXTRIGGER_8));
+  up_serialout(priv, LPC43_UART_FCR_OFFSET, (UART_FCR_FIFOEN | UART_FCR_RXTRIGGER_8));
 
   /* Set up the IER */
 
@@ -596,11 +595,11 @@ static int up_setup(struct uart_dev_s *dev)
 
   if (priv->parity == 1)
     {
-      lcr |= (UART_LCR_PE|UART_LCR_PS_ODD);
+      lcr |= (UART_LCR_PE | UART_LCR_PS_ODD);
     }
   else if (priv->parity == 2)
     {
-      lcr |= (UART_LCR_PE|UART_LCR_PS_EVEN);
+      lcr |= (UART_LCR_PE | UART_LCR_PS_EVEN);
     }
 
   /* Save the LCR */
@@ -614,14 +613,15 @@ static int up_setup(struct uart_dev_s *dev)
   /* Configure the FIFOs */
 
   up_serialout(priv, LPC43_UART_FCR_OFFSET,
-               (UART_FCR_RXTRIGGER_8|UART_FCR_TXRST|UART_FCR_RXRST|UART_FCR_FIFOEN));
+               (UART_FCR_RXTRIGGER_8 | UART_FCR_TXRST | UART_FCR_RXRST |
+                UART_FCR_FIFOEN));
 
   /* Enable Auto-RTS and Auto-CS Flow Control in the Modem Control Register */
-  
+
 #ifdef CONFIG_UART1_FLOWCONTROL
   if (priv->id == 1)
     {
-      up_serialout(priv, LPC43_UART_MCR_OFFSET, (UART_MCR_RTSEN|UART_MCR_CTSEN));
+      up_serialout(priv, LPC43_UART_MCR_OFFSET, (UART_MCR_RTSEN | UART_MCR_CTSEN));
     }
 #endif
 
@@ -639,7 +639,7 @@ static int up_setup(struct uart_dev_s *dev)
 
 static void up_shutdown(struct uart_dev_s *dev)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
 
   /* Disable further interrupts from the U[S]ART */
 
@@ -649,29 +649,29 @@ static void up_shutdown(struct uart_dev_s *dev)
 
   switch (priv->id)
     {
-  #ifdef CONFIG_LPC43_USART0
+#ifdef CONFIG_LPC43_USART0
       case 0:
         lpc43_usart0_reset();
         break;
-  #endif
+#endif
 
-  #ifdef CONFIG_LPC43_UART1
+#ifdef CONFIG_LPC43_UART1
       case 1:
         lpc43_uart1_reset();
         break;
-  #endif
+#endif
 
-  #ifdef CONFIG_LPC43_USART2
+#ifdef CONFIG_LPC43_USART2
       case 2:
         lpc43_usart2_reset();
         break;
-  #endif
+#endif
 
-  #ifdef CONFIG_LPC43_USART3
+#ifdef CONFIG_LPC43_USART3
       case 3:
         lpc43_usart3_reset();
         break;
-  #endif
+#endif
 
       default:
         break;
@@ -695,7 +695,7 @@ static void up_shutdown(struct uart_dev_s *dev)
 
 static int up_attach(struct uart_dev_s *dev)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   int ret;
 
   /* Attach and enable the IRQ */
@@ -703,11 +703,11 @@ static int up_attach(struct uart_dev_s *dev)
   ret = irq_attach(priv->irq, up_interrupt);
   if (ret == OK)
     {
-       /* Enable the interrupt (RX and TX interrupts are still disabled
-        * in the UART
-        */
+      /* Enable the interrupt (RX and TX interrupts are still disabled
+       * in the UART
+       */
 
-       up_enable_irq(priv->irq);
+      up_enable_irq(priv->irq);
     }
   return ret;
 }
@@ -724,7 +724,7 @@ static int up_attach(struct uart_dev_s *dev)
 
 static void up_detach(struct uart_dev_s *dev)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   up_disable_irq(priv->irq);
   irq_detach(priv->irq);
 }
@@ -779,7 +779,7 @@ static int up_interrupt(int irq, void *context)
     {
       PANIC();
     }
-  priv = (struct up_dev_s*)dev->priv;
+  priv = (struct up_dev_s *)dev->priv;
 
   /* Loop until there are no characters to be transferred or,
    * until we have been looping for a long time.
@@ -880,7 +880,7 @@ static int up_interrupt(int irq, void *context)
  *     RS-485/EIA-485 Auto Address Detection (AAD) mode -- NOT supported
  *
  *       In this mode, the receiver will compare any address byte received
- *       (parity = ‘1’) to the 8-bit value programmed into the RS485ADRMATCH
+ *       (parity = ï¿½1ï¿½) to the 8-bit value programmed into the RS485ADRMATCH
  *       register.  When a matching address character is detected it will be
  *       pushed onto the RXFIFO along with the parity bit, and the receiver
  *       will be automatically enabled.
@@ -896,7 +896,7 @@ static int up_interrupt(int irq, void *context)
  *       de-asserted (driven HIGH) once the last bit of data has been transmitted.
  *
  *     RS485/EIA-485 driver delay time -- Supported
- * 
+ *
  *       The driver delay time is the delay between the last stop bit leaving
  *       the TXFIFO and the de-assertion of the DIR pin. This delay time can be
  *       programmed in the 8-bit RS485DLY register. The delay time is in periods
@@ -931,21 +931,21 @@ static inline int up_set_rs485_mode(struct up_dev_s *priv,
   else
     {
       /* Set the RS-485/EIA-485 Control register:
-       * 
+       *
        *  NMMEN 0 = Normal Multidrop Mode (NMM) disabled
        *  RXDIS 0 = Receiver is not disabled
        *  AADEN 0 = Auto Address Detect (ADD) is disabled
        *  DCTRL 1 = Auto Direction Control is enabled
-       *  OINV  ? = Value control by user mode settings   
+       *  OINV  ? = Value control by user mode settings
        */
 
       regval = UART_RS485CTRL_DCTRL;
 
       /* Logic levels are controlled by the SER_RS485_RTS_ON_SEND and
-       * SER_RS485_RTS_AFTER_SEND bits in the mode flags. 
+       * SER_RS485_RTS_AFTER_SEND bits in the mode flags.
        * SER_RS485_RTS_AFTER_SEND is ignored.
        *
-       * By default, DIR will go logic low on send, but this can 
+       * By default, DIR will go logic low on send, but this can
        * be inverted.
        */
 
@@ -982,15 +982,15 @@ static inline int up_set_rs485_mode(struct up_dev_s *priv,
         }
       else
         {
-           tmp = ((priv->baud << 4) * mode->delay_rts_after_send) / 1000;
-           if (tmp > 255)
-             {
-               regval = 255;
-             }
-           else
-             {
-               regval = (uint32_t)tmp;
-             }
+          tmp = ((priv->baud << 4) * mode->delay_rts_after_send) / 1000;
+          if (tmp > 255)
+            {
+              regval = 255;
+            }
+          else
+            {
+              regval = (uint32_t)tmp;
+            }
         }
 
 
@@ -1075,7 +1075,7 @@ static int up_ioctl(struct file *filep, int cmd, unsigned long arg)
 {
   struct inode      *inode = filep->f_inode;
   struct uart_dev_s *dev   = inode->i_private;
-  struct up_dev_s   *priv  = (struct up_dev_s*)dev->priv;
+  struct up_dev_s   *priv  = (struct up_dev_s *)dev->priv;
   int                ret    = OK;
 
   switch (cmd)
@@ -1083,7 +1083,7 @@ static int up_ioctl(struct file *filep, int cmd, unsigned long arg)
 #ifdef CONFIG_SERIAL_TIOCSERGSTRUCT
     case TIOCSERGSTRUCT:
       {
-         struct up_dev_s *user = (struct up_dev_s*)arg;
+         struct up_dev_s *user = (struct up_dev_s *)arg;
          if (!user)
            {
              ret = -EINVAL;
@@ -1099,7 +1099,7 @@ static int up_ioctl(struct file *filep, int cmd, unsigned long arg)
 #ifdef CONFIG_SERIAL_TERMIOS
     case TCGETS:
       {
-        struct termios *termiosp = (struct termios*)arg;
+        struct termios *termiosp = (struct termios *)arg;
 
         if (!termiosp)
           {
@@ -1118,7 +1118,7 @@ static int up_ioctl(struct file *filep, int cmd, unsigned long arg)
 
     case TCSETS:
       {
-        struct termios *termiosp = (struct termios*)arg;
+        struct termios *termiosp = (struct termios *)arg;
 
         if (!termiosp)
           {
@@ -1190,7 +1190,7 @@ static int up_ioctl(struct file *filep, int cmd, unsigned long arg)
 
 static int up_receive(struct uart_dev_s *dev, uint32_t *status)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   uint32_t rbr;
 
   *status = up_serialin(priv, LPC43_UART_LSR_OFFSET);
@@ -1208,7 +1208,7 @@ static int up_receive(struct uart_dev_s *dev, uint32_t *status)
 
 static void up_rxint(struct uart_dev_s *dev, bool enable)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   if (enable)
     {
 #ifndef CONFIG_SUPPRESS_SERIAL_INTS
@@ -1233,7 +1233,7 @@ static void up_rxint(struct uart_dev_s *dev, bool enable)
 
 static bool up_rxavailable(struct uart_dev_s *dev)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   return ((up_serialin(priv, LPC43_UART_LSR_OFFSET) & UART_LSR_RDR) != 0);
 }
 
@@ -1247,7 +1247,7 @@ static bool up_rxavailable(struct uart_dev_s *dev)
 
 static void up_send(struct uart_dev_s *dev, int ch)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   up_serialout(priv, LPC43_UART_THR_OFFSET, (uint32_t)ch);
 }
 
@@ -1261,7 +1261,7 @@ static void up_send(struct uart_dev_s *dev, int ch)
 
 static void up_txint(struct uart_dev_s *dev, bool enable)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   irqstate_t flags;
 
   flags = irqsave();
@@ -1296,7 +1296,7 @@ static void up_txint(struct uart_dev_s *dev, bool enable)
 
 static bool up_txready(struct uart_dev_s *dev)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   return ((up_serialin(priv, LPC43_UART_LSR_OFFSET) & UART_LSR_THRE) != 0);
 }
 
@@ -1310,7 +1310,7 @@ static bool up_txready(struct uart_dev_s *dev)
 
 static bool up_txempty(struct uart_dev_s *dev)
 {
-  struct up_dev_s *priv = (struct up_dev_s*)dev->priv;
+  struct up_dev_s *priv = (struct up_dev_s *)dev->priv;
   return ((up_serialin(priv, LPC43_UART_LSR_OFFSET) & UART_LSR_THRE) != 0);
 }
 
@@ -1410,7 +1410,7 @@ void up_serialinit(void)
 int up_putc(int ch)
 {
 #ifdef HAVE_CONSOLE
-  struct up_dev_s *priv = (struct up_dev_s*)CONSOLE_DEV.priv;
+  struct up_dev_s *priv = (struct up_dev_s *)CONSOLE_DEV.priv;
   uint32_t ier;
   up_disableuartint(priv, &ier);
 #endif

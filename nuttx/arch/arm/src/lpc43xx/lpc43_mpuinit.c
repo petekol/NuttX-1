@@ -49,7 +49,7 @@
 #if defined(CONFIG_NUTTX_KERNEL) && defined(CONFIG_ARMV7M_MPU)
 
 /****************************************************************************
- * Private Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 
 #ifndef MAX

@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/usbdev/usbmsc_desc.c
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2012, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -116,7 +116,9 @@ static const struct usb_cfgdesc_s g_cfgdesc =
   USBMSC_NINTERFACES,                           /* ninterfaces */
   USBMSC_CONFIGID,                              /* cfgvalue */
   USBMSC_CONFIGSTRID,                           /* icfg */
-  USB_CONFIG_ATTR_ONE|SELFPOWERED|REMOTEWAKEUP, /* attr */
+  USB_CONFIG_ATTR_ONE |                         /* attr */
+    USBMSC_SELFPOWERED |
+    USBMSC_REMOTEWAKEUP,
   (CONFIG_USBDEV_MAXPOWER + 1) / 2              /* mxpower */
 };
 #endif
@@ -285,6 +287,11 @@ int usbmsc_mkstrdesc(uint8_t id, struct usb_strdesc_s *strdesc)
     */
 
    len = strlen(str);
+   if (len > (USBMSC_MAXSTRLEN / 2))
+     {
+       len = (USBMSC_MAXSTRLEN / 2);
+     }
+
    for (i = 0, ndata = 0; i < len; i++, ndata += 2)
      {
        strdesc->data[ndata]   = str[i];
@@ -358,8 +365,7 @@ int16_t usbmsc_mkcfgdesc(uint8_t *buf)
 {
 #ifdef CONFIG_USBDEV_DUALSPEED
   FAR const struct usb_epdesc_s *epdesc;
-  bool hispeed = (speed == USB_SPEED_HIGH);
-  uint16_t bulkmxpacket;
+  bool hispeed;
 #endif
 
   /* Configuration descriptor.  If the USB mass storage device is
@@ -388,12 +394,11 @@ int16_t usbmsc_mkcfgdesc(uint8_t *buf)
       hispeed = !hispeed;
     }
 
-  bulkmxpacket = USBMSC_BULKMAXPACKET(hispeed);
-  epdesc       = USBMSC_EPBULKINDESC(hispeed);
+  epdesc = USBMSC_EPBULKINDESC(hispeed);
   memcpy(buf, epdesc, USB_SIZEOF_EPDESC);
   buf += USB_SIZEOF_EPDESC;
 
-  epdesc       = USBMSC_EPBULKOUTDESC(hispeed);
+  epdesc = USBMSC_EPBULKOUTDESC(hispeed);
   memcpy(buf, epdesc, USB_SIZEOF_EPDESC);
 #else
   memcpy(buf, &g_fsepbulkoutdesc, USB_SIZEOF_EPDESC);

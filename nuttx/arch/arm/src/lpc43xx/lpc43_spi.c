@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/lpc43xx/lpc43_spi.c
  *
- *   Copyright (C) 2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,14 +54,14 @@
 #include "up_arch.h"
 
 #include "chip.h"
-#include "lpc43_syscon.h"
-#include "lpc43_pinconn.h"
+#include "lpc43_pinconfig.h"
 #include "lpc43_spi.h"
+#include "lpc43_ssp.h"
 
 #ifdef CONFIG_LPC43_SPI
 
 /****************************************************************************
- * Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 
 /* Enables debug output from this file (needs CONFIG_DEBUG too) */
@@ -93,7 +93,6 @@
  * use the CCLK undivided to get the SPI_CLOCK.
  */
 
-#define SPI_PCLKSET_DIV    SYSCON_PCLKSEL_CCLK
 #define SPI_CLOCK          LPC43_CCLK
 
 /****************************************************************************
@@ -161,7 +160,7 @@ static const struct spi_ops_s g_spiops =
 static struct lpc43_spidev_s g_spidev =
 {
   .spidev            = { &g_spiops },
-}; 
+};
 
 /****************************************************************************
  * Public Data
@@ -255,7 +254,7 @@ static uint32_t spi_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
 
   divisor = SPI_CLOCK / frequency;
 
-   /* The SPI CCR register must contain an even number greater than or equal to 8. */
+  /* The SPI CCR register must contain an even number greater than or equal to 8. */
 
   if (divisor < 8)
     {
@@ -269,7 +268,7 @@ static uint32_t spi_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
   divisor = (divisor + 1) & ~1;
 
   /* Save the new divisor value */
-  
+
   putreg32(divisor, LPC43_SPI_CCR);
 
   /* Calculate the new actual */
@@ -316,25 +315,25 @@ static void spi_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode)
       /* Yes... Set CR appropriately */
 
       regval = getreg32(LPC43_SPI_CR);
-      regval &= ~(SPI_CR_CPOL|SPI_CR_CPHA);
+      regval &= ~(SPI_CR_CPOL | SPI_CR_CPHA);
 
       switch (mode)
         {
         case SPIDEV_MODE0: /* CPOL=0; CPHA=0 */
           break;
- 
+
         case SPIDEV_MODE1: /* CPOL=0; CPHA=1 */
           regval |= SPI_CR_CPHA;
           break;
- 
+
         case SPIDEV_MODE2: /* CPOL=1; CPHA=0 */
           regval |= SPI_CR_CPOL;
           break;
- 
+
         case SPIDEV_MODE3: /* CPOL=1; CPHA=1 */
-          regval |= (SPI_CR_CPOL|SPI_CR_CPHA);
+          regval |= (SPI_CR_CPOL | SPI_CR_CPHA);
           break;
- 
+
         default:
           DEBUGASSERT(FALSE);
           return;
@@ -420,15 +419,15 @@ static uint16_t spi_send(FAR struct spi_dev_s *dev, uint16_t wd)
    * data transfer.
    */
 
- while ((getreg32(LPC43_SPI_SR) & SPI_SR_SPIF) == 0);
+  while ((getreg32(LPC43_SPI_SR) & SPI_SR_SPIF) == 0);
 
- /* Read the SPI Status Register again to clear the status bit */
+  /* Read the SPI Status Register again to clear the status bit */
 
- (void)getreg32(LPC43_SPI_SR);
+  (void)getreg32(LPC43_SPI_SR);
   return (uint16_t)getreg32(LPC43_SPI_DR);
 }
 
-/*************************************************************************
+/****************************************************************************
  * Name: spi_sndblock
  *
  * Description:
@@ -449,7 +448,7 @@ static uint16_t spi_send(FAR struct spi_dev_s *dev, uint16_t wd)
 
 static void spi_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size_t nwords)
 {
-  FAR uint8_t *ptr = (FAR uint8_t*)buffer;
+  FAR uint8_t *ptr = (FAR uint8_t *)buffer;
   uint8_t data;
 
   spidbg("nwords: %d\n", nwords);
@@ -465,12 +464,12 @@ static void spi_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size
        * data transfer.
        */
 
-     while ((getreg32(LPC43_SPI_SR) & SPI_SR_SPIF) == 0);
+      while ((getreg32(LPC43_SPI_SR) & SPI_SR_SPIF) == 0);
 
-     /* Read the SPI Status Register again to clear the status bit */
+      /* Read the SPI Status Register again to clear the status bit */
 
-     (void)getreg32(LPC43_SPI_SR);
-     nwords--;
+      (void)getreg32(LPC43_SPI_SR);
+      nwords--;
     }
 }
 
@@ -495,7 +494,7 @@ static void spi_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size
 
 static void spi_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nwords)
 {
-  FAR uint8_t *ptr = (FAR uint8_t*)buffer;
+  FAR uint8_t *ptr = (FAR uint8_t *)buffer;
 
   spidbg("nwords: %d\n", nwords);
   while (nwords)
@@ -511,16 +510,16 @@ static void spi_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nw
        * data transfer.
        */
 
-     while ((getreg32(LPC43_SPI_SR) & SPI_SR_SPIF) == 0);
+      while ((getreg32(LPC43_SPI_SR) & SPI_SR_SPIF) == 0);
 
-     /* Read the SPI Status Register again to clear the status bit */
+      /* Read the SPI Status Register again to clear the status bit */
 
-     (void)getreg32(LPC43_SPI_SR);
+      (void)getreg32(LPC43_SPI_SR);
 
-     /* Read the received data from the SPI Data Register */   
+      /* Read the received data from the SPI Data Register */
 
-     *ptr++ = (uint8_t)getreg32(LPC43_SPI_DR);
-     nwords--;
+      *ptr++ = (uint8_t)getreg32(LPC43_SPI_DR);
+      nwords--;
     }
 }
 
@@ -545,40 +544,23 @@ static void spi_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nw
 FAR struct spi_dev_s *lpc43_spiinitialize(int port)
 {
   FAR struct lpc43_spidev_s *priv = &g_spidev;
-  irqstate_t flags;
-  uint32_t regval;
 
   /* Configure multiplexed pins as connected on the board.  Chip select
    * pins must be configured by board-specific logic.  All SPI pins and
-   * one SPI1 pin (SCK) have multiple, alternative pin selection.
+   * one SPI1 pin (SCK) have multiple, alternative pin selections.
    * Definitions in the board.h file must be provided to resolve the
    * board-specific pin configuration like:
    *
-   * #define GPIO_SPI_SCK GPIO_SPI_SCK_1
+   * #define PINCONF_SPI_SCK PINCONF_SPI_SCK_1
    */
 
-  flags = irqsave();
-  lpc43_configgpio(GPIO_SPI_SCK);
-  lpc43_configgpio(GPIO_SPI_MISO);
-  lpc43_configgpio(GPIO_SPI_MOSI);
+  lpc43_pin_config(PINCONF_SPI_SCK);
+  lpc43_pin_config(PINCONF_SPI_MISO);
+  lpc43_pin_config(PINCONF_SPI_MOSI);
 
-  /* Configure clocking */
-
-  regval  = getreg32(LPC43_SYSCON_PCLKSEL0);
-  regval &= ~SYSCON_PCLKSEL0_SPI_MASK;
-  regval |= (SPI_PCLKSET_DIV << SYSCON_PCLKSEL0_SPI_SHIFT);
-  putreg32(regval, LPC43_SYSCON_PCLKSEL0);
-
-  /* Enable peripheral clocking to SPI and SPI1 */
-
-  regval  = getreg32(LPC43_SYSCON_PCONP);
-  regval |= SYSCON_PCONP_PCSPI;
-  putreg32(regval, LPC43_SYSCON_PCONP);
-  irqrestore(flags);
-  
   /* Configure 8-bit SPI mode and master mode */
 
-  putreg32(SPI_CR_BITS_8BITS|SPI_CR_BITENABLE|SPI_CR_MSTR, LPC43_SPI_CR);
+  putreg32(SPI_CR_BITS_8BITS | SPI_CR_BITENABLE | SPI_CR_MSTR, LPC43_SPI_CR);
 
   /* Set the initial SPI configuration */
 
@@ -602,3 +584,39 @@ FAR struct spi_dev_s *lpc43_spiinitialize(int port)
 
 #endif /* CONFIG_LPC43_SPI */
 
+/****************************************************************************
+ * Name: up_spiinitialize
+ *
+ * Description:
+ *   Initialize the selected SPI port
+ *   0 - SPI
+ *   1 - SSP0
+ *   2 - SSP1
+ *
+ * Input Parameter:
+ *   Port number (for hardware that has multiple SPI interfaces)
+ *
+ * Returned Value:
+ *   Valid SPI device structure reference on success; a NULL on failure
+ *
+ ****************************************************************************/
+
+FAR struct spi_dev_s *up_spiinitialize(int port)
+{
+  if (port)
+    {
+#if defined(CONFIG_LPC43_SSP0) || defined(CONFIG_LPC43_SSP1)
+      return lpc43_sspinitialize(port - 1);
+#else
+      return NULL;
+#endif
+    }
+  else
+    {
+#if defined(CONFIG_LPC43_SPI)
+      return lpc43_spiinitialize(port);
+#else
+      return NULL;
+#endif
+    }
+}

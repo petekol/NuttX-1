@@ -54,7 +54,7 @@
 #include "chip.h"
 
 /****************************************************************************
- * Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 
 /* The desired timer interrupt frequency is provided by the definition
@@ -86,7 +86,7 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Global Functions
+ * Public Functions
  ****************************************************************************/
 
 /****************************************************************************
@@ -142,7 +142,7 @@ void up_timerinit(void)
 
   /* Enable SysTick interrupts */
 
-  putreg32((NVIC_SYSTICK_CTRL_CLKSOURCE|NVIC_SYSTICK_CTRL_TICKINT|
+  putreg32((NVIC_SYSTICK_CTRL_CLKSOURCE | NVIC_SYSTICK_CTRL_TICKINT |
             NVIC_SYSTICK_CTRL_ENABLE), NVIC_SYSTICK_CTRL);
 
   /* And enable the timer interrupt */

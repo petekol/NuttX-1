@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/usbdev/cdcacm_desc.c
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2012, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -134,7 +134,9 @@ static const struct usb_cfgdesc_s g_cfgdesc =
   CDCACM_NINTERFACES,                           /* ninterfaces */
   CDCACM_CONFIGID,                              /* cfgvalue */
   CDCACM_CONFIGSTRID,                           /* icfg */
-  USB_CONFIG_ATTR_ONE|SELFPOWERED|REMOTEWAKEUP, /* attr */
+  USB_CONFIG_ATTR_ONE |                         /* attr */
+    CDCACM_SELFPOWERED |
+    CDCACM_REMOTEWAKEUP,
   (CONFIG_USBDEV_MAXPOWER + 1) / 2              /* mxpower */
 };
 #endif
@@ -186,7 +188,7 @@ static const struct cdc_hdr_funcdesc_s g_funchdr =
     MSBYTE(CDC_VERSIONNO)                       /* MS cdc */
   }
 };
- 
+
 /* ACM functional descriptor */
 
 static const struct cdc_acm_funcdesc_s g_acmfunc =
@@ -272,7 +274,7 @@ static const struct usb_epdesc_s g_epbulkindesc =
   1                                             /* interval */
 };
 
-/* The components of the the configuration descriptor are maintained as
+/* The components of the configuration descriptor are maintained as
  * a collection of separate descriptor structure coordinated by the
  * following array.  These descriptors could have been combined into
  * one larger "super" configuration descriptor structure.  However, I
@@ -374,6 +376,29 @@ static const struct usb_qualdesc_s g_qualdesc =
  ****************************************************************************/
 
 /****************************************************************************
+ * Name: cdcacm_cpepdesc
+ *
+ * Description:
+ *   Copy an endpoint descriptor using the correct max packet size.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_USBDEV_DUALSPEED
+void cdcacm_cpepdesc(FAR const struct usb_epdesc_s *indesc, uint16_t mxpacket,
+                     FAR struct usb_epdesc_s *outdesc)
+{
+  /* Copy the "canned" descriptor */
+
+  memcpy(outdesc, indesc, USB_SIZEOF_EPDESC);
+
+  /* Then add the correct max packet size */
+
+  outdesc->mxpacketsize[0] = LSBYTE(mxpacket);
+  outdesc->mxpacketsize[1] = MSBYTE(mxpacket);
+}
+#endif
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -447,6 +472,11 @@ int cdcacm_mkstrdesc(uint8_t id, struct usb_strdesc_s *strdesc)
     */
 
    len = strlen(str);
+   if (len > (CDCACM_MAXSTRLEN / 2))
+     {
+       len = (CDCACM_MAXSTRLEN / 2);
+     }
+
    for (i = 0, ndata = 0; i < len; i++, ndata += 2)
      {
        strdesc->data[ndata]   = str[i];
@@ -462,7 +492,7 @@ int cdcacm_mkstrdesc(uint8_t id, struct usb_strdesc_s *strdesc)
 }
 
 /****************************************************************************
- * Name: cdcacm_getepdesc
+ * Name: cdcacm_getdevdesc
  *
  * Description:
  *   Return a pointer to the raw device descriptor
@@ -512,20 +542,14 @@ FAR const struct usb_epdesc_s *cdcacm_getepdesc(enum cdcacm_epdesc_e epid)
  ****************************************************************************/
 
 #ifdef CONFIG_USBDEV_DUALSPEED
-void cdcacm_mkepdesc(num cdcacm_epdesc_e epid, uint16_t mxpacket,
+void cdcacm_mkepdesc(enum cdcacm_epdesc_e epid, uint16_t mxpacket,
                      FAR struct usb_epdesc_s *outdesc)
 {
-  FAR const struct usb_epdesc_s *indesc;
+  /* Map the ID to the correct endpoint and let cdcacm_cpepdesc to the real
+   * work.
+   */
 
-  /* Copy the "canned" descriptor */
-
-  indesc = cdcacm_getepdesc(epid)
-  memcpy(outdesc, indesc, USB_SIZEOF_EPDESC);
-
-  /* Then add the correct max packet size */
-
-  outdesc->mxpacketsize[0] = LSBYTE(mxpacket);
-  outdesc->mxpacketsize[1] = MSBYTE(mxpacket);
+  cdcacm_cpepdesc(cdcacm_getepdesc(epid), mxpacket, outdesc);
 }
 #endif
 
@@ -574,10 +598,11 @@ int16_t cdcacm_mkcfgdesc(FAR uint8_t *buf)
        */
 
 #ifdef CONFIG_USBDEV_DUALSPEED
-      if (highspeed && group->hsepsize != 0)
+      if (hispeed && group->hsepsize != 0)
         {
-          cdcacm_mkepdesc(group->desc, group->hsepsize,
-                            (FAR struct usb_epdesc_s*)dest);
+          cdcacm_cpepdesc((FAR const struct usb_epdesc_s *)group->desc,
+                          group->hsepsize,
+                          (FAR struct usb_epdesc_s*)dest);
         }
       else
 #endif
