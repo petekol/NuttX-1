@@ -350,7 +350,7 @@ static inline void lpc43_pll1config(uint32_t ctrlvalue)
   regval &= ~(PLL1_CTRL_BYPASS    | PLL1_CTRL_FBSEL     | PLL1_CTRL_DIRECT |
               PLL1_CTRL_PSEL_MASK | PLL1_CTRL_NSEL_MASK |
               PLL1_CTRL_MSEL_MASK);
-  
+
   /* Set selected PLL1 controls:
    *
    *   - PLL1_CTRL_FBSEL:     Set in both integer and direct modes
@@ -380,7 +380,7 @@ static inline void lpc43_pll1enable(void)
   /* Take PLL1 out of power down mode.  The reset state of the PD bit
    * is one, i.e., powered down.
    */
-  
+
   regval  = getreg32(LPC43_PLL1_CTRL);
   regval &= ~PLL1_CTRL_PD;
   putreg32(regval, LPC43_PLL1_CTRL);
@@ -418,6 +418,176 @@ static inline void lpc43_m4clkselect(uint32_t clksel)
  ****************************************************************************/
 
 /****************************************************************************
+ * Name: lpc43_pll0usbconfig
+ *
+ * Description:
+ *   Configure PLL0USB dividers and multipliers per the settings in the board.h
+ *   file to generate the desired Fclkcout and Fcco frequencies.
+ *
+ ****************************************************************************/
+
+void lpc43_pll0usbconfig(void)
+{
+  /* Power down, no bypass, direct i-o, */
+
+  putreg32((PLL0USB_CTRL_PD | PLL0USB_CTRL_DIRECTI | PLL0USB_CTRL_DIRECTO | PLL0USB_CTRL_CLKEN | PLL0USB_CTRL_AUTOBLOCK | BOARD_USB0_CLKSRC), LPC43_PLL0USB_CTRL);
+
+  putreg32(BOARD_USB0_MDIV, LPC43_PLL0USB_MDIV);
+  putreg32(BOARD_USB0_NP_DIV, LPC43_PLL0USB_NP_DIV);
+}
+
+/****************************************************************************
+ * Name: lpc43_pll0usbenable
+ *
+ * Description:
+ *   Take PLL0USB out of power-down mode and wait until it is locked onto the
+ *   input clock.
+ *
+ ****************************************************************************/
+
+void lpc43_pll0usbenable(void)
+{
+  uint32_t regval;
+
+  /* Take PLL0 out of power down mode.  The reset state of the PD bit
+   * is one, i.e., powered down.
+   */
+
+  regval  = getreg32(LPC43_PLL0USB_CTRL);
+  regval &= ~PLL0USB_CTRL_PD;
+  putreg32(regval, LPC43_PLL0USB_CTRL);
+
+  /* When the power-down mode is terminated, PPL0 will resume its normal
+   * operation and will make the lock signal high once it has regained
+   * lock on the input clock
+   *
+   * Wait for PLL0 to report that it is locked.
+   */
+
+  while ((getreg32(LPC43_PLL0USB_STAT) & PLL0USB_STAT_LOCK) == 0);
+}
+
+/****************************************************************************
+ * Name: lpc43_pll0usbdisable
+ *
+ * Description:
+ *   Take PLL0USB to power-down mode.
+ *
+ ****************************************************************************/
+
+void lpc43_pll0usbdisable(void)
+{
+  uint32_t regval;
+
+  /* Take PLL1 out of power down mode.  The reset state of the PD bit
+   * is one, i.e., powered down.
+   */
+
+  regval  = getreg32(LPC43_PLL0USB_CTRL);
+  regval |= PLL0USB_CTRL_PD;
+  putreg32(regval, LPC43_PLL0USB_CTRL);
+}
+
+#if defined(BOARD_IDIVA_DIVIDER) && defined(BOARD_IDIVA_CLKSRC)
+void lpc43_idiva(void)
+{
+  uint32_t regval;
+
+  /* Set clock source, divider */
+
+  regval  = getreg32(LPC43_IDIVA_CTRL);
+  regval &= ~(IDIVA_CTRL_CLKSEL_MASK | IDIVA_CTRL_IDIV_MASK);
+  regval |= BOARD_IDIVA_CLKSRC | IDIVA_CTRL_AUTOBLOCK | IDIVA_CTRL_IDIV(BOARD_IDIVA_DIVIDER);
+  putreg32(regval, LPC43_IDIVA_CTRL);
+}
+#endif
+
+#if defined(BOARD_IDIVB_DIVIDER) && defined(BOARD_IDIVB_CLKSRC)
+void lpc43_idivb(void)
+{
+  uint32_t regval;
+
+  /* Set clock source, divider */
+
+  regval  = getreg32(LPC43_IDIVB_CTRL);
+  regval &= ~(IDIVBCD_CTRL_CLKSEL_MASK | IDIVBCD_CTRL_IDIV_MASK);
+  regval |= BOARD_IDIVB_CLKSRC | IDIVBCD_CTRL_AUTOBLOCK | IDIVBCD_CTRL_IDIV(BOARD_IDIVB_DIVIDER);
+  putreg32(regval, LPC43_IDIVB_CTRL);
+}
+#endif
+
+#if defined(BOARD_IDIVC_DIVIDER) && defined(BOARD_IDIVC_CLKSRC)
+void lpc43_idivc(void)
+{
+  uint32_t regval;
+
+  /* Set clock source, divider */
+
+  regval  = getreg32(LPC43_IDIVC_CTRL);
+  regval &= ~(IDIVBCD_CTRL_CLKSEL_MASK | IDIVBCD_CTRL_IDIV_MASK);
+  regval |= BOARD_IDIVC_CLKSRC | IDIVBCD_CTRL_AUTOBLOCK | IDIVBCD_CTRL_IDIV(BOARD_IDIVC_DIVIDER);
+  putreg32(regval, LPC43_IDIVC_CTRL);
+}
+#endif
+
+#if defined(BOARD_IDIVD_DIVIDER) && defined(BOARD_IDIVD_CLKSRC)
+void lpc43_idivd(void)
+{
+  uint32_t regval;
+
+  /* Set clock source, divider */
+
+  regval  = getreg32(LPC43_IDIVD_CTRL);
+  regval &= ~(IDIVBCD_CTRL_CLKSEL_MASK | IDIVBCD_CTRL_IDIV_MASK);
+  regval |= BOARD_IDIVD_CLKSRC | IDIVBCD_CTRL_AUTOBLOCK | IDIVBCD_CTRL_IDIV(BOARD_IDIVD_DIVIDER);
+  putreg32(regval, LPC43_IDIVD_CTRL);
+}
+#endif
+
+#if defined(BOARD_IDIVE_DIVIDER) && defined(BOARD_IDIVE_CLKSRC)
+void lpc43_idive(void)
+{
+  uint32_t regval;
+
+  /* Set clock source, divider */
+
+  regval  = getreg32(LPC43_IDIVE_CTRL);
+  regval &= ~(IDIVE_CTRL_CLKSEL_MASK | IDIVE_CTRL_IDIV_MASK);
+  regval |= BOARD_IDIVE_CLKSRC | IDIVE_CTRL_AUTOBLOCK | IDIVE_CTRL_IDIV(BOARD_IDIVE_DIVIDER);
+  putreg32(regval, LPC43_IDIVE_CTRL);
+}
+#endif
+
+#if defined(BOARD_ABP1_CLKSRC)
+void lpc43_abp1(void)
+{
+  uint32_t regval;
+
+  /* Set clock source */
+
+  regval  = getreg32(LPC43_BASE_APB1_CLK);
+  regval &= ~BASE_APB_CLK_CLKSEL_MASK;
+  regval |= BOARD_ABP1_CLKSRC | BASE_APB_CLK_AUTOBLOCK;
+  putreg32(regval, LPC43_BASE_APB1_CLK);
+}
+#endif
+
+#if defined(BOARD_ABP3_CLKSRC)
+void lpc43_abp3(void)
+{
+  uint32_t regval;
+
+  /* Set clock source */
+
+  regval  = getreg32(LPC43_BASE_APB3_CLK);
+  regval &= ~BASE_APB_CLK_CLKSEL_MASK;
+  regval |= BOARD_ABP3_CLKSRC | BASE_APB_CLK_AUTOBLOCK;
+  putreg32(regval, LPC43_BASE_APB3_CLK);
+}
+#endif
+
+
+/****************************************************************************
  * Name: lpc43_clockconfig
  *
  * Description:
@@ -441,7 +611,7 @@ void lpc43_clockconfig(void)
   /* Enable PLL1 */
 
   lpc43_pll1enable();
- 
+
   /* Set up PLL1 output as the M4 clock */
 
   lpc43_m4clkselect(BASE_M4_CLKSEL_PLL1);
@@ -477,6 +647,38 @@ void lpc43_clockconfig(void)
 
   /* Go to the final, full-speed PLL1 configuration */
 
-  lpc43_pll1config(PLL_CONTROLS);  
+  lpc43_pll1config(PLL_CONTROLS);
+#endif
+
+  /* Configure idivs */
+
+#if defined(BOARD_IDIVA_DIVIDER) && defined(BOARD_IDIVA_CLKSRC)
+  lpc43_idiva();
+#endif
+
+#if defined(BOARD_IDIVB_DIVIDER) && defined(BOARD_IDIVB_CLKSRC)
+  lpc43_idivb();
+#endif
+
+#if defined(BOARD_IDIVC_DIVIDER) && defined(BOARD_IDIVC_CLKSRC)
+  lpc43_idivc();
+#endif
+
+#if defined(BOARD_IDIVD_DIVIDER) && defined(BOARD_IDIVD_CLKSRC)
+  lpc43_idivd();
+#endif
+
+#if defined(BOARD_IDIVE_DIVIDER) && defined(BOARD_IDIVE_CLKSRC)
+  lpc43_idive();
+#endif
+
+  /* Configure abpXs */
+
+#if defined(BOARD_ABP1_CLKSRC)
+  lpc43_abp1();
+#endif
+
+#if defined(BOARD_ABP3_CLKSRC)
+  lpc43_abp3();
 #endif
 }

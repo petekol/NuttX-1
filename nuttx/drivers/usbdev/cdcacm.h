@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/usbdev/cdcacm.h
  *
- *   Copyright (C) 2011-2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011-2012, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -106,7 +106,7 @@
 
 #define CDCACM_NINTERFACES         (2)      /* Number of interfaces in the configuration */
 #define CDCACM_NOTIFID             (CONFIG_CDCACM_IFNOBASE+0)
-#define CDCACM_NOTALTIFID          (0) 
+#define CDCACM_NOTALTIFID          (0)
 #define CDCACM_DATAIFID            (CONFIG_CDCACM_IFNOBASE+1)
 #define CDCACM_DATAALTIFID         (0)
 
@@ -119,6 +119,7 @@
  */
 
 #define CDCACM_MXDESCLEN           (64)
+#define CDCACM_MAXSTRLEN           (CDCACM_MXDESCLEN-2)
 
 /* Device descriptor values */
 

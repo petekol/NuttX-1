@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/usbdev/pl2303.c
  *
- *   Copyright (C) 2008-2013 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2008-2013, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * This logic emulates the Prolific PL2303 serial/USB converter
@@ -139,16 +139,16 @@
 
 /* USB Controller */
 
-#ifndef CONFIG_USBDEV_SELFPOWERED
-#  define SELFPOWERED USB_CONFIG_ATTR_SELFPOWER
+#ifdef CONFIG_USBDEV_SELFPOWERED
+#  define PL2303_SELFPOWERED USB_CONFIG_ATTR_SELFPOWER
 #else
-#  define SELFPOWERED (0)
+#  define PL2303_SELFPOWERED (0)
 #endif
 
-#ifndef CONFIG_USBDEV_REMOTEWAKEUP
-#  define REMOTEWAKEUP USB_CONFIG_ATTR_WAKEUP
+#ifdef CONFIG_USBDEV_REMOTEWAKEUP
+#  define PL2303_REMOTEWAKEUP USB_CONFIG_ATTR_WAKEUP
 #else
-#  define REMOTEWAKEUP (0)
+#  define PL2303_REMOTEWAKEUP (0)
 #endif
 
 #ifndef CONFIG_USBDEV_MAXPOWER
@@ -194,6 +194,7 @@
 /* Buffer big enough for any of our descriptors */
 
 #define PL2303_MXDESCLEN           (64)
+#define PL2303_MAXSTRLEN           (PL2303_MXDESCLEN-2)
 
 /* Vender specific control requests *******************************************/
 
@@ -401,6 +402,9 @@ static const struct uart_ops_s g_uartops =
   NULL,                 /* receive */
   usbser_rxint,         /* rxinit */
   NULL,                 /* rxavailable */
+#ifdef CONFIG_SERIAL_IFLOWCONTROL
+  NULL,                 /* rxflowcontrol */
+#endif
   NULL,                 /* send */
   usbser_txint,         /* txinit */
   NULL,                 /* txready */
@@ -438,7 +442,9 @@ static const struct usb_cfgdesc_s g_cfgdesc =
   PL2303_NINTERFACES,                           /* ninterfaces */
   PL2303_CONFIGID,                              /* cfgvalue */
   PL2303_CONFIGSTRID,                           /* icfg */
-  USB_CONFIG_ATTR_ONE|SELFPOWERED|REMOTEWAKEUP, /* attr */
+  USB_CONFIG_ATTR_ONE |                         /* attr */
+    PL2303_SELFPOWERED |
+    PL2303_REMOTEWAKEUP,
   (CONFIG_USBDEV_MAXPOWER + 1) / 2              /* mxpower */
 };
 
@@ -472,7 +478,7 @@ static const struct usb_epdesc_s g_epbulkoutdesc =
   USB_DESC_TYPE_ENDPOINT,                       /* type */
   PL2303_EPOUTBULK_ADDR,                        /* addr */
   PL2303_EPOUTBULK_ATTR,                        /* attr */
-  { LSBYTE(64), MSBYTE(64) },                   /* maxpacket -- might change to 512*/
+  { LSBYTE(64), MSBYTE(64) },                   /* maxpacket -- might change to 512 */
   0                                             /* interval */
 };
 
@@ -482,7 +488,7 @@ static const struct usb_epdesc_s g_epbulkindesc =
   USB_DESC_TYPE_ENDPOINT,                       /* type */
   PL2303_EPINBULK_ADDR,                         /* addr */
   PL2303_EPINBULK_ATTR,                         /* attr */
-  { LSBYTE(64), MSBYTE(64) },                   /* maxpacket -- might change to 512*/
+  { LSBYTE(64), MSBYTE(64) },                   /* maxpacket -- might change to 512 */
   0                                             /* interval */
 };
 
@@ -866,6 +872,11 @@ static int usbclass_mkstrdesc(uint8_t id, struct usb_strdesc_s *strdesc)
     */
 
    len = strlen(str);
+   if (len > (PL2303_MAXSTRLEN / 2))
+     {
+       len = (PL2303_MAXSTRLEN / 2);
+     }
+
    for (i = 0, ndata = 0; i < len; i++, ndata += 2)
      {
        strdesc->data[ndata]   = str[i];
@@ -1035,7 +1046,7 @@ static int usbclass_setconfig(FAR struct pl2303_dev_s *priv, uint8_t config)
   int i;
   int ret = 0;
 
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (priv == NULL)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
@@ -1343,9 +1354,9 @@ static int usbclass_bind(FAR struct usbdevclass_driver_s *driver,
 
   /* Pre-allocate all endpoints... the endpoints will not be functional
    * until the SET CONFIGURATION request is processed in usbclass_setconfig.
-   * This is done here because there may be calls to kmalloc and the SET
+   * This is done here because there may be calls to kmm_malloc and the SET
    * CONFIGURATION processing probably occurrs within interrupt handling
-   * logic where kmalloc calls will fail.
+   * logic where kmm_malloc calls will fail.
    */
 
   /* Pre-allocate the IN interrupt endpoint */
@@ -1381,9 +1392,13 @@ static int usbclass_bind(FAR struct usbdevclass_driver_s *driver,
     }
   priv->epbulkout->priv = priv;
 
-  /* Pre-allocate read requests */
+  /* Pre-allocate read requests.  The buffer size is one full packet. */
 
-  reqlen = priv->epbulkout->maxpacket;
+#ifdef CONFIG_USBDEV_DUALSPEED
+  reqlen = 512;
+#else
+  reqlen = 64;
+#endif
 
   for (i = 0; i < CONFIG_PL2303_NRDREQS; i++)
     {
@@ -1400,9 +1415,24 @@ static int usbclass_bind(FAR struct usbdevclass_driver_s *driver,
       reqcontainer->req->callback = usbclass_rdcomplete;
     }
 
-  /* Pre-allocate write request containers and put in a free list */
+  /* Pre-allocate write request containers and put in a free list.
+   * The buffer size should be larger than a full packet.  Otherwise,
+   * we will send a bogus null packet at the end of each packet.
+   *
+   * Pick the larger of the max packet size and the configured request
+   * size.
+   */
 
-  reqlen = max(CONFIG_PL2303_BULKIN_REQLEN, priv->epbulkin->maxpacket);
+#ifdef CONFIG_USBDEV_DUALSPEED
+  reqlen = 512;
+#else
+  reqlen = 64;
+#endif
+
+  if (CONFIG_PL2303_BULKIN_REQLEN > reqlen)
+    {
+      reqlen = CONFIG_CDCACM_BULKIN_REQLEN;
+    }
 
   for (i = 0; i < CONFIG_PL2303_NWRREQS; i++)
     {
@@ -1883,6 +1913,7 @@ static void usbclass_disconnect(FAR struct usbdevclass_driver_s *driver,
 
   priv->serdev.xmit.head = 0;
   priv->serdev.xmit.tail = 0;
+  priv->rxhead = 0;
   irqrestore(flags);
 
   /* Perform the soft connect function so that we will we can be
@@ -1985,7 +2016,7 @@ static int usbser_setup(FAR struct uart_dev_s *dev)
 
   /* Sanity check */
 
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (!dev || !dev->priv)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
@@ -2026,7 +2057,7 @@ static void usbser_shutdown(FAR struct uart_dev_s *dev)
 
   /* Sanity check */
 
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (!dev || !dev->priv)
     {
        usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
@@ -2088,7 +2119,7 @@ static void usbser_rxint(FAR struct uart_dev_s *dev, bool enable)
 
   /* Sanity check */
 
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (!dev || !dev->priv)
     {
        usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
@@ -2179,7 +2210,7 @@ static void usbser_txint(FAR struct uart_dev_s *dev, bool enable)
 
   /* Sanity checks */
 
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (!dev || !dev->priv)
     {
        usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
@@ -2222,7 +2253,7 @@ static bool usbser_txempty(FAR struct uart_dev_s *dev)
 
   usbtrace(PL2303_CLASSAPI_TXEMPTY, 0);
 
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (!priv)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_INVALIDARG), 0);
@@ -2259,7 +2290,7 @@ int usbdev_serialinitialize(int minor)
 
   /* Allocate the structures needed */
 
-  alloc = (FAR struct pl2303_alloc_s*)kmalloc(sizeof(struct pl2303_alloc_s));
+  alloc = (FAR struct pl2303_alloc_s*)kmm_malloc(sizeof(struct pl2303_alloc_s));
   if (!alloc)
     {
       usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_ALLOCDEVSTRUCT), 0);
@@ -2343,6 +2374,6 @@ int usbdev_serialinitialize(int minor)
 errout_with_class:
   usbdev_unregister(&drvr->drvr);
 errout_with_alloc:
-  kfree(alloc);
+  kmm_free(alloc);
   return ret;
 }

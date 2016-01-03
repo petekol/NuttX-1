@@ -409,7 +409,7 @@ static int composite_setup(FAR struct usbdevclass_driver_s *driver,
 #ifdef CONFIG_DEBUG
   if (!driver || !dev || !dev->ep0 || !ctrl)
     {
-      usbtrace(TRACE_CLSERROR(COMPOSITE_TRACEERR_SETUPINVALIDARGS), 0);
+      usbtrace(TRACE_CLSERROR(USBCOMPOSITE_TRACEERR_SETUPINVALIDARGS), 0);
       return -EIO;
      }
 #endif
@@ -422,7 +422,7 @@ static int composite_setup(FAR struct usbdevclass_driver_s *driver,
 #ifdef CONFIG_DEBUG
   if (!priv)
     {
-      usbtrace(TRACE_CLSERROR(COMPOSITE_TRACEERR_EP0NOTBOUND2), 0);
+      usbtrace(TRACE_CLSERROR(USBCOMPOSITE_TRACEERR_EP0NOTBOUND2), 0);
       return -ENODEV;
     }
 #endif
@@ -436,6 +436,7 @@ static int composite_setup(FAR struct usbdevclass_driver_s *driver,
 
   uvdbg("type=%02x req=%02x value=%04x index=%04x len=%04x\n",
         ctrl->type, ctrl->req, value, index, len);
+  UNUSED(index);
 
   if ((ctrl->type & USB_REQ_TYPE_MASK) == USB_REQ_TYPE_STANDARD)
     {
@@ -510,7 +511,7 @@ static int composite_setup(FAR struct usbdevclass_driver_s *driver,
 
               default:
                 {
-                  usbtrace(TRACE_CLSERROR(COMPOSITE_TRACEERR_GETUNKNOWNDESC), value);
+                  usbtrace(TRACE_CLSERROR(USBCOMPOSITE_TRACEERR_GETUNKNOWNDESC), value);
                 }
                 break;
               }
@@ -571,7 +572,7 @@ static int composite_setup(FAR struct usbdevclass_driver_s *driver,
            break;
 
         default:
-          usbtrace(TRACE_CLSERROR(COMPOSITE_TRACEERR_UNSUPPORTEDSTDREQ), ctrl->req);
+          usbtrace(TRACE_CLSERROR(USBCOMPOSITE_TRACEERR_UNSUPPORTEDSTDREQ), ctrl->req);
           break;
         }
     }
@@ -613,7 +614,7 @@ static int composite_setup(FAR struct usbdevclass_driver_s *driver,
       ret = EP_SUBMIT(dev->ep0, ctrlreq);
       if (ret < 0)
         {
-          usbtrace(TRACE_CLSERROR(COMPOSITE_TRACEERR_EPRESPQ), (uint16_t)-ret);
+          usbtrace(TRACE_CLSERROR(USBCOMPOSITE_TRACEERR_EPRESPQ), (uint16_t)-ret);
           ctrlreq->result = OK;
           composite_ep0incomplete(dev->ep0, ctrlreq);
         }
@@ -674,7 +675,7 @@ static void composite_disconnect(FAR struct usbdevclass_driver_s *driver,
    * re-enumerated.
    */
 
-  DEV_CONNECT(dev); 
+  DEV_CONNECT(dev);
 }
 
 /****************************************************************************
@@ -773,7 +774,7 @@ static void composite_resume(FAR struct usbdevclass_driver_s *driver,
  *   Register USB composite device as configured.  This function will call
  *   board-specific implementations in order to obtain the class objects for
  *   each of the members of the composite (see board_mscclassobject(),
- *   board_cdcclassobjec(), ...) 
+ *   board_cdcclassobjec(), ...)
  *
  * Input Parameter:
  *   None
@@ -797,7 +798,7 @@ FAR void *composite_initialize(void)
 
   /* Allocate the structures needed */
 
-  alloc = (FAR struct composite_alloc_s*)kmalloc(sizeof(struct composite_alloc_s));
+  alloc = (FAR struct composite_alloc_s*)kmm_malloc(sizeof(struct composite_alloc_s));
   if (!alloc)
     {
       usbtrace(TRACE_CLSERROR(USBCOMPOSITE_TRACEERR_ALLOCDEVSTRUCT), 0);
@@ -851,7 +852,7 @@ FAR void *composite_initialize(void)
   return (FAR void *)alloc;
 
 errout_with_alloc:
-  kfree(alloc);
+  kmm_free(alloc);
   return NULL;
 }
 
@@ -863,7 +864,7 @@ errout_with_alloc:
  *   class' device object as was returned by composite_initialize().  This
  *   function will call  board-specific implementations in order to free the
  *   class objects for each of the members of the composite (see
- *   board_mscuninitialize(), board_cdcuninitialize(), ...) 
+ *   board_mscuninitialize(), board_cdcuninitialize(), ...)
  *
  * Input Parameters:
  *   handle - The handle returned by a previous call to composite_initialize().
@@ -880,20 +881,12 @@ void composite_uninitialize(FAR void *handle)
 
   DEBUGASSERT(alloc != NULL);
 
-  /* Uninitialize each of the member classes */
+  /* First phase uninitialization each of the member classes */
 
   priv = &alloc->dev;
-  if (priv->dev1)
-    {
-      DEV1_UNINITIALIZE(priv->dev1);
-      priv->dev1 = NULL;
-    }
 
-  if (priv->dev2)
-    {
-      DEV1_UNINITIALIZE(priv->dev2);
-      priv->dev2 = NULL;
-    }
+  DEV1_UNINITIALIZE(priv->dev1);
+  DEV2_UNINITIALIZE(priv->dev2);
 
   /* Then unregister and destroy the composite class */
 
@@ -902,9 +895,14 @@ void composite_uninitialize(FAR void *handle)
   /* Free any resources used by the composite driver */
   /* None */
 
+  /* Second phase uninitialization:  Clean up all memory resources */
+
+  DEV1_UNINITIALIZE(priv->dev1);
+  DEV2_UNINITIALIZE(priv->dev2);
+
   /* Then free the composite driver state structure itself */
 
-  kfree(priv);
+  kmm_free(priv);
 }
 
 /****************************************************************************

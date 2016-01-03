@@ -55,18 +55,21 @@
 
 #include "chip.h"
 
-#include "lpc43_syscon.h"
-#include "lpc43_pinconn.h"
 #include "lpc43_ssp.h"
+#include "lpc43_cgu.h"
+#include "lpc43_scu.h"
+#include "lpc43_ccu.h"
+#include "lpc43_pinconfig.h"
+
 
 #if defined(CONFIG_LPC43_SSP0) || defined(CONFIG_LPC43_SSP1)
 
 /****************************************************************************
- * Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 
 /* The following enable debug output from this file (needs CONFIG_DEBUG too).
- * 
+ *
  * CONFIG_SSP_DEBUG - Define to enable basic SSP debug
  * CONFIG_SSP_VERBOSE - Define to enable verbose SSP debug
  */
@@ -84,25 +87,7 @@
 #  define spivdbg(x...)
 #endif
 
-/* SSP Clocking.
- *
- * The CPU clock by 1, 2, 4, or 8 to get the SSP peripheral clock (SSP_CLOCK).
- * SSP_CLOCK may be further divided by 2-254 to get the SSP clock.  If we
- * want a usable range of 4KHz to 25MHz for the SSP, then:
- *
- * 1. SSPCLK must be greater than (2*25MHz) = 50MHz, and
- * 2. SSPCLK must be less than (254*40Khz) = 101.6MHz.
- *
- * If we assume that CCLK less than or equal to 100MHz, we can just
- * use the CCLK undivided to get the SSP_CLOCK.
- */
 
-#if LPC43_CCLK > 100000000
-#  error "CCLK <= 100,000,000 assumed"
-#endif
-
-#define SSP_PCLKSET_DIV    SYSCON_PCLKSEL_CCLK
-#define SSP_CLOCK          LPC43_CCLK
 
 /****************************************************************************
  * Private Types
@@ -114,6 +99,7 @@ struct lpc43_sspdev_s
 {
   struct spi_dev_s spidev;     /* Externally visible part of the SPI interface */
   uint32_t         sspbase;    /* SPIn base address */
+  uint32_t         sspbasefreq;
 #ifdef CONFIG_LPC43_SSP_INTERRUPTS
   uint8_t          sspirq;     /* SPI IRQ number */
 #endif
@@ -145,8 +131,12 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency);
 static void     ssp_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode);
 static void     ssp_setbits(FAR struct spi_dev_s *dev, int nbits);
 static uint16_t ssp_send(FAR struct spi_dev_s *dev, uint16_t ch);
+static void     ssp_exchange(FAR struct spi_dev_s *dev, FAR const void *txbuffer,
+                         FAR void *rxbuffer, size_t nwords);
+#ifndef CONFIG_SPI_EXCHANGE
 static void     ssp_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size_t nwords);
 static void     ssp_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nwords);
+#endif
 
 /* Initialization */
 
@@ -176,8 +166,12 @@ static const struct spi_ops_s g_spi0ops =
   .cmddata           = lpc43_ssp0cmddata,  /* Provided externally */
 #endif
   .send              = ssp_send,
+#ifdef CONFIG_SPI_EXCHANGE
+  .exchange          = ssp_exchange,
+#else
   .sndblock          = ssp_sndblock,
   .recvblock         = ssp_recvblock,
+#endif
 #ifdef CONFIG_SPI_CALLBACK
   .registercallback  = lpc43_ssp0register, /* Provided externally */
 #else
@@ -189,10 +183,11 @@ static struct lpc43_sspdev_s g_ssp0dev =
 {
   .spidev            = { &g_spi0ops },
   .sspbase           = LPC43_SSP0_BASE,
+  .sspbasefreq       = BOARD_SSP0_BASEFREQ
 #ifdef CONFIG_LPC43_SSP_INTERRUPTS
   .sspirq            = LPC43_IRQ_SSP0,
 #endif
-}; 
+};
 #endif /* CONFIG_LPC43_SSP0 */
 
 #ifdef CONFIG_LPC43_SSP1
@@ -210,8 +205,12 @@ static const struct spi_ops_s g_spi1ops =
   .cmddata           = lpc43_ssp1cmddata,  /* Provided externally */
 #endif
   .send              = ssp_send,
+#ifdef CONFIG_SPI_EXCHANGE
+  .exchange          = ssp_exchange,
+#else
   .sndblock          = ssp_sndblock,
   .recvblock         = ssp_recvblock,
+#endif
 #ifdef CONFIG_SPI_CALLBACK
   .registercallback  = lpc43_ssp1register, /* Provided externally */
 #else
@@ -223,10 +222,11 @@ static struct lpc43_sspdev_s g_ssp1dev =
 {
   .spidev            = { &g_spi1ops },
   .sspbase           = LPC43_SSP1_BASE,
+  .sspbasefreq       = BOARD_SSP1_BASEFREQ
 #ifdef CONFIG_LPC43_SSP_INTERRUPTS
   .sspirq            = LPC43_IRQ_SSP1,
 #endif
-}; 
+};
 #endif /* CONFIG_LPC43_SSP1 */
 
 /****************************************************************************
@@ -271,7 +271,7 @@ static inline uint32_t ssp_getreg(FAR struct lpc43_sspdev_s *priv, uint8_t offse
  * Returned Value:
  *   None
  *
- ***************************************************************************/
+ ****************************************************************************/
 
 static inline void ssp_putreg(FAR struct lpc43_sspdev_s *priv, uint8_t offset, uint32_t value)
 {
@@ -321,6 +321,7 @@ static int ssp_lock(FAR struct spi_dev_s *dev, bool lock)
     {
       (void)sem_post(&priv->exclsem);
     }
+
   return OK;
 }
 #endif
@@ -346,9 +347,6 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
   uint32_t divisor;
   uint32_t actual;
 
-  /* Check if the requested frequence is the same as the frequency selection */
-
-  DEBUGASSERT(priv && frequency <= SSP_CLOCK / 2);
 #ifndef CONFIG_SPI_OWNBUS
   if (priv->frequency == frequency)
     {
@@ -360,9 +358,9 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
 
   /* frequency = SSP_CLOCK / divisor, or divisor = SSP_CLOCK / frequency */
 
-  divisor = SSP_CLOCK / frequency;
+  divisor = priv->sspbasefreq / frequency;
 
-   /* "In master mode, CPSDVSRmin = 2 or larger (even numbers only)" */
+  /* "In master mode, CPSDVSRmin = 2 or larger (even numbers only)" */
 
   if (divisor < 2)
     {
@@ -376,12 +374,12 @@ static uint32_t ssp_setfrequency(FAR struct spi_dev_s *dev, uint32_t frequency)
   divisor = (divisor + 1) & ~1;
 
   /* Save the new divisor value */
-  
+
   ssp_putreg(priv, LPC43_SSP_CPSR_OFFSET, divisor);
 
   /* Calculate the new actual */
 
-  actual = SSP_CLOCK / divisor;
+  actual = priv->sspbasefreq / divisor;
 
   /* Save the frequency setting */
 
@@ -423,25 +421,25 @@ static void ssp_setmode(FAR struct spi_dev_s *dev, enum spi_mode_e mode)
       /* Yes... Set CR0 appropriately */
 
       regval = ssp_getreg(priv, LPC43_SSP_CR0_OFFSET);
-      regval &= ~(SSP_CR0_CPOL|SSP_CR0_CPHA);
+      regval &= ~(SSP_CR0_CPOL | SSP_CR0_CPHA);
 
       switch (mode)
         {
         case SPIDEV_MODE0: /* CPOL=0; CPHA=0 */
           break;
- 
+
         case SPIDEV_MODE1: /* CPOL=0; CPHA=1 */
           regval |= SSP_CR0_CPHA;
           break;
- 
+
         case SPIDEV_MODE2: /* CPOL=1; CPHA=0 */
           regval |= SSP_CR0_CPOL;
           break;
- 
+
         case SPIDEV_MODE3: /* CPOL=1; CPHA=1 */
-          regval |= (SSP_CR0_CPOL|SSP_CR0_CPHA);
+          regval |= (SSP_CR0_CPOL | SSP_CR0_CPHA);
           break;
- 
+
         default:
           sspdbg("Bad mode: %d\n", mode);
           DEBUGASSERT(FALSE);
@@ -540,7 +538,106 @@ static uint16_t ssp_send(FAR struct spi_dev_s *dev, uint16_t wd)
   return (uint16_t)regval;
 }
 
-/*************************************************************************
+/****************************************************************************
+ * Name: ssp_exchange
+ *
+ * Description:
+ *   Exahange a block of data from SPI. Required.
+ *
+ * Input Parameters:
+ *   dev      - Device-specific state data
+ *   txbuffer - A pointer to the buffer of data to be sent
+ *   rxbuffer - A pointer to the buffer in which to receive data
+ *   nwords   - the length of data that to be exchanged in units of words.
+ *              The wordsize is determined by the number of bits-per-word
+ *              selected for the SPI interface.  If nbits <= 8, the data is
+ *              packed into uint8_t's; if nbits >8, the data is packed into
+ *              uint16_t's
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+static void ssp_exchange(FAR struct spi_dev_s *dev, FAR const void *txbuffer,
+                         FAR void *rxbuffer, size_t nwords)
+{
+  FAR struct lpc43_sspdev_s *priv = (FAR struct lpc43_sspdev_s *)dev;
+  union
+  {
+    FAR uint8_t  *p8;
+    FAR uint16_t *p16;
+    FAR void     *pv;
+  } tx;
+  union
+  {
+    FAR uint8_t  *p8;
+    FAR uint16_t *p16;
+    FAR void     *pv;
+  } rx;
+  uint32_t data;
+  uint32_t datadummy = (priv->nbits > 8) ? 0xffff : 0xff;
+  uint32_t rxpending = 0;
+
+  /* While there is remaining to be sent (and no synchronization error has occurred) */
+
+  sspdbg("nwords: %d\n", nwords);
+
+  tx.pv = txbuffer;
+  rx.pv = rxbuffer;
+
+  while (nwords || rxpending)
+    {
+      /* Write data to the data register while (1) the TX FIFO is
+       * not full, (2) we have not exceeded the depth of the TX FIFO,
+       * and (3) there are more bytes to be sent.
+       */
+
+      spivdbg("TX: rxpending: %d nwords: %d\n", rxpending, nwords);
+      while ((ssp_getreg(priv, LPC43_SSP_SR_OFFSET) & SSP_SR_TNF) &&
+         (rxpending < LPC43_SSP_FIFOSZ) && nwords)
+        {
+          if (txbuffer)
+		  {
+			  if (priv->nbits > 8)
+				{
+				  data = (uint32_t)*tx.p16++;
+				}
+			  else
+				{
+				  data = (uint32_t)*tx.p8++;
+				}
+		  }
+
+          ssp_putreg(priv, LPC43_SSP_DR_OFFSET, txbuffer?data:datadummy);
+          nwords--;
+          rxpending++;
+        }
+
+      /* Now, read the RX data from the RX FIFO while the RX FIFO is not empty */
+
+      spivdbg("RX: rxpending: %d\n", rxpending);
+      while (ssp_getreg(priv, LPC43_SSP_SR_OFFSET) & SSP_SR_RNE)
+        {
+          data = ssp_getreg(priv, LPC43_SSP_DR_OFFSET);
+          if (rxbuffer)
+          {
+				if(priv->nbits > 8)
+				{
+				  *rx.p16++ = (uint16_t)data;
+				}
+				else
+				{
+				  *rx.p8++  = (uint8_t)data;
+				}
+          }
+
+          rxpending--;
+        }
+    }
+}
+
+/****************************************************************************
  * Name: ssp_sndblock
  *
  * Description:
@@ -552,81 +649,18 @@ static uint16_t ssp_send(FAR struct spi_dev_s *dev, uint16_t wd)
  *   nwords - the length of data to send from the buffer in number of words.
  *            The wordsize is determined by the number of bits-per-word
  *            selected for the SPI interface.  If nbits <= 8, the data is
- *            packed into uint8_t's; if nbits >8, the data is packed into uint16_t's
+ *            packed into uint8_t's; if nbits >8, the data is packed into
+ *            uint16_t's
  *
  * Returned Value:
  *   None
  *
  ****************************************************************************/
 
+#ifndef CONFIG_SPI_EXCHANGE
 static void ssp_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size_t nwords)
 {
-  FAR struct lpc43_sspdev_s *priv = (FAR struct lpc43_sspdev_s *)dev;
-  union
-  {
-    FAR const uint8_t  *p8;
-    FAR const uint16_t *p16;
-    FAR const void     *pv;
-  } u;
-  uint32_t data;
-  uint32_t sr;
-
-  /* Loop while thre are bytes remaining to be sent */
-
-  sspdbg("nwords: %d\n", nwords);
-  u.pv = buffer;
-  while (nwords > 0)
-    {
-      /* While the TX FIFO is not full and there are bytes left to send */
-
-      while ((ssp_getreg(priv, LPC43_SSP_SR_OFFSET) & SSP_SR_TNF) && nwords)
-        {
-          /* Fetch the data to send */
-
-          if (priv->nbits > 8)
-            {
-              data = (uint32_t)*u.p16++;
-            }
-          else
-            {
-              data = (uint32_t)*u.p8++;
-            }
-
-          /* Send the data */
-
-          ssp_putreg(priv, LPC43_SSP_DR_OFFSET, data);
-          nwords--;
-        }
-    }
-
-  /* Then discard all card responses until the RX & TX FIFOs are emptied. */
-
-  sspdbg("discarding\n");
-  do
-    {
-      /* Is there anything in the RX fifo? */
-
-      sr = ssp_getreg(priv, LPC43_SSP_SR_OFFSET);
-      if ((sr & SSP_SR_RNE) != 0)
-        {
-          /* Yes.. Read and discard */
-
-          (void)ssp_getreg(priv, LPC43_SSP_DR_OFFSET);
-        }
-
-      /* There is a race condition where TFE may go true just before
-       * RNE goes true and this loop terminates prematurely.  The nasty little
-       * delay in the following solves that (it could probably be tuned
-       * to improve performance).
-       */
-
-      else if ((sr & SSP_SR_TFE) != 0)
-        {
-          up_udelay(100);
-          sr = ssp_getreg(priv, LPC43_SSP_SR_OFFSET);
-        }
-    }
-  while ((sr & SSP_SR_RNE) != 0 || (sr & SSP_SR_TFE) == 0);
+  return ssp_exchange(dev, buffer, NULL, nwords);
 }
 
 /****************************************************************************
@@ -641,7 +675,8 @@ static void ssp_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size
  *   nwords - the length of data that can be received in the buffer in number
  *            of words.  The wordsize is determined by the number of bits-per-word
  *            selected for the SPI interface.  If nbits <= 8, the data is
- *            packed into uint8_t's; if nbits >8, the data is packed into uint16_t's
+ *            packed into uint8_t's; if nbits >8, the data is packed into
+ *            uint16_t's
  *
  * Returned Value:
  *   None
@@ -650,55 +685,9 @@ static void ssp_sndblock(FAR struct spi_dev_s *dev, FAR const void *buffer, size
 
 static void ssp_recvblock(FAR struct spi_dev_s *dev, FAR void *buffer, size_t nwords)
 {
-  FAR struct lpc43_sspdev_s *priv = (FAR struct lpc43_sspdev_s *)dev;
-  union
-  {
-    FAR uint8_t  *p8;
-    FAR uint16_t *p16;
-    FAR void     *pv;
-  } u;
-  uint32_t data;
-  uint32_t rxpending = 0;
-
-  /* While there is remaining to be sent (and no synchronization error has occurred) */
-
-  sspdbg("nwords: %d\n", nwords);
-  u.pv = buffer;
-  while (nwords || rxpending)
-    {
-      /* Fill the transmit FIFO with 0xffff...
-       * Write 0xff to the data register while (1) the TX FIFO is
-       * not full, (2) we have not exceeded the depth of the TX FIFO,
-       * and (3) there are more bytes to be sent.
-       */
-
-      spivdbg("TX: rxpending: %d nwords: %d\n", rxpending, nwords);
-      while ((ssp_getreg(priv, LPC43_SSP_SR_OFFSET) & SSP_SR_TNF) &&
-             (rxpending < LPC43_SSP_FIFOSZ) && nwords)
-        {
-          ssp_putreg(priv, LPC43_SSP_DR_OFFSET, 0xffff);
-          nwords--;
-          rxpending++;
-        }
-
-      /* Now, read the RX data from the RX FIFO while the RX FIFO is not empty */
-
-      spivdbg("RX: rxpending: %d\n", rxpending);
-      while (ssp_getreg(priv, LPC43_SSP_SR_OFFSET) & SSP_SR_RNE)
-        {
-          data = (uint8_t)ssp_getreg(priv, LPC43_SSP_DR_OFFSET);
-          if (priv->nbits > 8)
-            {
-              *u.p16++ = (uint16_t)data;
-            }
-          else
-            {
-              *u.p8++  = (uint8_t)data;
-            }
-          rxpending--;
-        }
-    }
+  return ssp_exchange(dev, NULL, buffer, nwords);
 }
+#endif /* !CONFIG_SPI_EXCHANGE */
 
 /****************************************************************************
  * Name: lpc43_ssp0initialize
@@ -720,32 +709,33 @@ static inline FAR struct lpc43_sspdev_s *lpc43_ssp0initialize(void)
   irqstate_t flags;
   uint32_t regval;
 
-  /* Configure multiplexed pins as connected on the board.  Chip select
-   * pins must be configured by board-specific logic.  All SSP0 pins and
-   * one SSP1 pin (SCK) have multiple, alternative pin selection.
-   * Definitions in the board.h file must be provided to resolve the
-   * board-specific pin configuration like:
-   *
-   * #define GPIO_SSP0_SCK GPIO_SSP0_SCK_1
-   */
-
   flags = irqsave();
-  lpc43_configgpio(GPIO_SSP0_SCK);
-  lpc43_configgpio(GPIO_SSP0_MISO);
-  lpc43_configgpio(GPIO_SSP0_MOSI);
 
   /* Configure clocking */
 
-  regval  = getreg32(LPC43_SYSCON_PCLKSEL1);
-  regval &= ~SYSCON_PCLKSEL1_SSP0_MASK;
-  regval |= (SSP_PCLKSET_DIV << SYSCON_PCLKSEL1_SSP0_SHIFT);
-  putreg32(regval, LPC43_SYSCON_PCLKSEL1);
+  regval  = getreg32(LPC43_BASE_SSP0_CLK);
+  regval &= ~BASE_SSP0_CLK_CLKSEL_MASK;
+  regval |= (BOARD_SSP0_CLKSRC | BASE_SSP0_CLK_AUTOBLOCK);
+  putreg32(regval, LPC43_BASE_SSP0_CLK);
 
-  /* Enable peripheral clocking to SSP0 */
+  /* Clock register */
 
-  regval  = getreg32(LPC43_SYSCON_PCONP);
-  regval |= SYSCON_PCONP_PCSSP0;
-  putreg32(regval, LPC43_SYSCON_PCONP);
+  regval  = getreg32(LPC43_CCU1_M4_SSP0_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_SSP0_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB0_SSP0_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB0_SSP0_CFG);
+
+  /* Pin configuration */
+
+  lpc43_pin_config(PINCONF_SSP0_SCK);
+  lpc43_pin_config(PINCONF_SSP0_MISO);
+  lpc43_pin_config(PINCONF_SSP0_MOSI);
+
   irqrestore(flags);
 
   return &g_ssp0dev;
@@ -772,32 +762,33 @@ static inline FAR struct lpc43_sspdev_s *lpc43_ssp1initialize(void)
   irqstate_t flags;
   uint32_t regval;
 
-  /* Configure multiplexed pins as connected on the board.  Chip select
-   * pins must be configured by board-specific logic.  All SSP0 pins and
-   * one SSP1 pin (SCK) have multiple, alternative pin selection.
-   * Definitions in the board.h file must be provided to resolve the
-   * board-specific pin configuration like:
-   *
-   * #define GPIO_SSP0_SCK GPIO_SSP0_SCK_1
-   */
-
   flags = irqsave();
-  lpc43_configgpio(GPIO_SSP1_SCK);
-  lpc43_configgpio(GPIO_SSP1_MISO);
-  lpc43_configgpio(GPIO_SSP1_MOSI);
 
   /* Configure clocking */
 
-  regval  = getreg32(LPC43_SYSCON_PCLKSEL0);
-  regval &= ~SYSCON_PCLKSEL0_SSP1_MASK;
-  regval |= (SSP_PCLKSET_DIV << SYSCON_PCLKSEL0_SSP1_SHIFT);
-  putreg32(regval, LPC43_SYSCON_PCLKSEL0);
+  regval  = getreg32(LPC43_BASE_SSP1_CLK);
+  regval &= ~BASE_SSP1_CLK_CLKSEL_MASK;
+  regval |= (BOARD_SSP1_CLKSRC | BASE_SSP1_CLK_AUTOBLOCK);
+  putreg32(regval, LPC43_BASE_SSP1_CLK);
 
-  /* Enable peripheral clocking to SSP0 and SSP1 */
+  /* Clock register */
 
-  regval  = getreg32(LPC43_SYSCON_PCONP);
-  regval |= SYSCON_PCONP_PCSSP1;
-  putreg32(regval, LPC43_SYSCON_PCONP);
+  regval  = getreg32(LPC43_CCU1_M4_SSP1_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU1_M4_SSP1_CFG);
+
+  /* Clock peripheral */
+
+  regval  = getreg32(LPC43_CCU2_APB2_SSP1_CFG);
+  regval |= CCU_CLK_CFG_RUN;
+  putreg32(regval, LPC43_CCU2_APB2_SSP1_CFG);
+
+  /* Pins configuration */
+
+  lpc43_pin_config(PINCONF_SSP1_SCK);
+  lpc43_pin_config(PINCONF_SSP1_MISO);
+  lpc43_pin_config(PINCONF_SSP1_MOSI);
+
   irqrestore(flags);
 
   return &g_ssp1dev;
@@ -837,18 +828,20 @@ FAR struct spi_dev_s *lpc43_sspinitialize(int port)
       priv = lpc43_ssp0initialize();
       break;
 #endif
+
 #ifdef CONFIG_LPC43_SSP1
     case 1:
       priv = lpc43_ssp1initialize();
       break;
 #endif
+
     default:
       return NULL;
     }
 
   /* Configure 8-bit SPI mode */
 
-  ssp_putreg(priv, LPC43_SSP_CR0_OFFSET, SSP_CR0_DSS_8BIT|SSP_CR0_FRF_SPI);
+  ssp_putreg(priv, LPC43_SSP_CR0_OFFSET, SSP_CR0_DSS_8BIT | SSP_CR0_FRF_SPI);
 
   /* Disable the SSP and all interrupts (we'll poll for all data) */
 
@@ -927,4 +920,3 @@ void ssp_flush(FAR struct spi_dev_s *dev)
 }
 
 #endif /* CONFIG_LPC43_SSP0/1 */
-

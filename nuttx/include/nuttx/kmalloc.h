@@ -124,6 +124,12 @@ extern "C"
 # define kmm_trysemaphore()     umm_trysemaphore()
 # define kmm_givesemaphore()    umm_givesemaphore()
 
+# define kmm_malloc(s)          malloc(s)
+# define kmm_zalloc(s)          zalloc(s)
+# define kmm_realloc(p,s)       realloc(p,s)
+# define kmm_memalign(a,s)      memalign(a,s)
+# define kmm_free(p)            free(p)
+
 # define kmalloc(s)             malloc(s)
 # define kzalloc(s)             zalloc(s)
 # define krealloc(p,s)          realloc(p,s)

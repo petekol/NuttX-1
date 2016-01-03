@@ -1,7 +1,7 @@
 /****************************************************************************
  * arch/arm/src/lpc43xx/lpc43_allocateheap.c
  *
- *   Copyright (C) 2012-2013 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2012-2013, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,7 +58,7 @@
 #include "lpc43_usbram.h"
 
 /****************************************************************************
- * Private Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 /* Get customizations for each supported chip.
  *
@@ -141,7 +141,7 @@
 
 /* Check for Configuration A. */
 
-#ifndef CONFIG_BOOT_SRAM
+#ifndef CONFIG_LPC43_BOOT_SRAM
 
 /* Configuration A */
 /* CONFIG_DRAM_START should be set to the base of AHB SRAM, local 0. */
@@ -169,13 +169,13 @@
 /* Configuration B */
 /* CONFIG_DRAM_START should be set to the base of local SRAM, bank 1. */
 
-#  if CONFIG_DRAM_START != LPC43_LOCSRAM_BANK1_BASE
+#  if CONFIG_DRAM_START != LPC43_LOCSRAM_BANK0_BASE
 #    error "CONFIG_DRAM_START must be set to the base address of AHB SRAM Bank 0"
 #  endif
 
 /* The configured RAM size should be equal to the size of local SRAM Bank 1 */
 
-#  if CONFIG_DRAM_SIZE != LPC43_LOCSRAM_BANK1_SIZE
+#  if CONFIG_DRAM_SIZE != LPC43_LOCSRAM_BANK0_SIZE
 #    error "CONFIG_DRAM_SIZE must be set to size of AHB SRAM Bank 0"
 #  endif
 
@@ -234,7 +234,7 @@ const uint32_t g_idle_topstack = (uint32_t)&_ebss + CONFIG_IDLETHREAD_STACKSIZE;
  * Description:
  *   This function will be called to dynamically set aside the heap region.
  *
- *   For the kernel build (CONFIG_NUTTX_KERNEL=y) with both kernel- and
+ *   For the kernel build (CONFIG_BUILD_PROTECTED=y) with both kernel- and
  *   user-space heaps (CONFIG_MM_KERNEL_HEAP=y), this function provides the
  *   size of the unprotected, user-space heap.
  *
@@ -248,48 +248,48 @@ void up_allocate_heap(FAR void **heap_start, size_t *heap_size)
   /* Start with the first SRAM region */
 
   up_ledon(LED_HEAPALLOCATE);
-  *heap_start = (FAR void*)g_idle_topstack;
+  *heap_start = (FAR void *)g_idle_topstack;
   *heap_size = CONFIG_DRAM_END - g_idle_topstack;
 }
 
-/************************************************************************
+/****************************************************************************
  * Name: up_addregion
  *
  * Description:
  *   Memory may be added in non-contiguous chunks.  Additional chunks are
  *   added by calling this function.
  *
- ************************************************************************/
+ ****************************************************************************/
 
 #if CONFIG_MM_REGIONS > 1
 void up_addregion(void)
 {
 #if CONFIG_MM_REGIONS > 1
- /* Add the next SRAM region (which should exist) */
- 
- kmm_addregion((FAR void*)MM_REGION2_BASE, MM_REGION2_SIZE);
+  /* Add the next SRAM region (which should exist) */
+
+  kmm_addregion((FAR void *)MM_REGION2_BASE, MM_REGION2_SIZE);
 
 #ifdef MM_REGION3_BASE
- /* Add the third SRAM region (which will not exist in configuration B) */
+  /* Add the third SRAM region (which will not exist in configuration B) */
 
 #if CONFIG_MM_REGIONS > 2
- /* Add the third SRAM region (which may not exist) */
- 
- kmm_addregion((FAR void*)MM_REGION3_BASE, MM_REGION3_SIZE);
+  /* Add the third SRAM region (which may not exist) */
+
+  kmm_addregion((FAR void *)MM_REGION3_BASE, MM_REGION3_SIZE);
 
 #if CONFIG_MM_REGIONS > 3 && defined(MM_DMAHEAP_BASE)
- /* Add the DMA region (which may not be available) */
- 
- kmm_addregion((FAR void*)MM_DMAHEAP_BASE, MM_DMAHEAP_SIZE);
+  /* Add the DMA region (which may not be available) */
+
+  kmm_addregion((FAR void *)MM_DMAHEAP_BASE, MM_DMAHEAP_SIZE);
 
 #endif /* CONFIG_MM_REGIONS > 3 && defined(MM_DMAHEAP_BASE) */
 #endif /* CONFIG_MM_REGIONS > 2 */
 #else  /* MM_REGION3_BASE */
 
 #if CONFIG_MM_REGIONS > 2 && defined(MM_DMAHEAP_BASE)
- /* Add the DMA region (which may not be available) */
- 
- kmm_addregion((FAR void*)MM_DMAHEAP_BASE, MM_DMAHEAP_SIZE);
+  /* Add the DMA region (which may not be available) */
+
+  kmm_addregion((FAR void *)MM_DMAHEAP_BASE, MM_DMAHEAP_SIZE);
 
 #endif /* CONFIG_MM_REGIONS > 3 && defined(MM_DMAHEAP_BASE) */
 #endif /* MM_REGION3_BASE */

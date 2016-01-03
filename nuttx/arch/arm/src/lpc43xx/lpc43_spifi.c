@@ -51,7 +51,7 @@
 
 #include <nuttx/kmalloc.h>
 #include <nuttx/fs/ioctl.h>
-#include <nuttx/mtd.h>
+#include <nuttx/mtd/mtd.h>
 
 #include <arch/irq.h>
 #include <arch/board/board.h>
@@ -62,18 +62,19 @@
 #include "lpc43_cgu.h"
 #include "lpc43_spifi.h"
 #include "lpc43_pinconfig.h"
+#include "spifi/inc/spifilib_api.h"
 
-#ifdef CONFIG_LPC43_SPIFI
+#ifdef CONFIG_LPC43_SPIFI_FIXME
 
 /****************************************************************************
- * Pre-Processor Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 /* SPIFI Configuration ******************************************************/
 /* This logic supports some special options that can be used to create an
  * mtd device on the SPIFI FLASH.  NOTE:  CONFIG_LPC43_SPIFI=y must also
  * be defined to enable SPIFI setup support:
  *
- * CONFIG_SPIFI_RDONLY - Create a read only device on SPIFI.
+ * CONFIG_SPIFI_READONLY - Create a read only device on SPIFI.
  * CONFIG_SPIFI_OFFSET - Offset the beginning of the block driver this many
  *   bytes into the device address space.  This offset must be an exact
  *   multiple of the erase block size. Default 0.
@@ -145,11 +146,11 @@
    priv->spifi->spifi_erase(rom, operands)
 #else
 #  define SPIFI_INIT(priv, rom, cshigh, options, mhz) \
-   spifi_init(rom, cshigh, options, mhz)
+   spifiInit(rom, cshigh, options, mhz)
 #  define SPIFI_PROGRAM(priv, rom, src, operands) \
-   spifi_program(rom, src, operands)
+   spifiProgram(rom, src, operands)
 #  define SPIFI_ERASE(priv, rom, operands) \
-   spifi_erase(rom, operands)
+   spifiErase(rom, operands)
 #endif
 
 /* 512 byte sector simulation */
@@ -241,10 +242,10 @@
  * Compute this from the SPIFI clock period and the minimum high time of CS
  * from the serial flash data sheet:
  *
- *   csHigh = ceiling( min CS high / SPIFI clock period ) - 1 
+ *   csHigh = ceiling(min CS high / SPIFI clock period) - 1
  *
  * where ceiling means round up to the next higher integer if the argument
- * isn’t an integer.
+ * isnï¿½t an integer.
  */
 
 #define SPIFI_CSHIGH 9
@@ -381,7 +382,7 @@ static void lpc43_blockerase(struct lpc43_dev_s *priv, off_t sector)
   priv->operands.dest   = SPIFI_BASE + (sector << SPIFI_BLKSHIFT);
   priv->operands.length = SPIFI_BLKSIZE;
 
-  fvdbg("SPIFI_ERASE: dest=%p length=%d\n", 
+  fvdbg("SPIFI_ERASE: dest=%p length=%d\n",
         priv->operands.dest, priv->operands.length);
 
   result = SPIFI_ERASE(priv, &priv->rom, &priv->operands);
@@ -456,7 +457,7 @@ static int lpc43_pagewrite(FAR struct lpc43_dev_s *priv, FAR uint8_t *dest,
   priv->operands.dest   = dest;
   priv->operands.length = nbytes;
 
-  fvdbg("SPIFI_PROGRAM: src=%p dest=%p length=%d\n", 
+  fvdbg("SPIFI_PROGRAM: src=%p dest=%p length=%d\n",
         src, priv->operands.dest, priv->operands.length);
 
   result = SPIFI_PROGRAM(priv, &priv->rom, src, &priv->operands);
@@ -543,7 +544,7 @@ static FAR uint8_t *lpc43_cacheread(struct lpc43_dev_s *priv, off_t sector)
   FAR const uint8_t *src;
   off_t blkno;
   int   index;
- 
+
   /* Convert from the 512 byte sector to the erase sector size of the device.  For
    * exmample, if the actual erase sector size if 4Kb (1 << 12), then we first
    * shift to the right by 3 to get the sector number in 4096 increments.
@@ -791,6 +792,7 @@ static ssize_t lpc43_bwrite(FAR struct mtd_dev_s *dev, off_t startblock, size_t 
 
   dest = SPIFI_BASE + (startblock << SPIFI_BLKSHIFT);
 
+#if defined(CONFIG_SPIFI_SECTOR512)
   /* Write all of the erase blocks to FLASH */
 
   ret = lpc43_pagewrite(priv, dest, buffer, nblocks << SPIFI_512SHIFT);
@@ -799,6 +801,7 @@ static ssize_t lpc43_bwrite(FAR struct mtd_dev_s *dev, off_t startblock, size_t 
       fdbg("ERROR: lpc43_pagewrite failed: %d\n", ret);
       return ret;
     }
+#endif
 
   lpc43_dumpbuffer(__func__, buffer, nblocks << SPIFI_BLKSHIFT)
   return nblocks;
@@ -881,7 +884,7 @@ static int lpc43_ioctl(FAR struct mtd_dev_s *dev, int cmd, unsigned long arg)
             ret = lpc43_chiperase(priv);
         }
         break;
- 
+
       case MTDIOC_XIPBASE:
       default:
         ret = -ENOTTY; /* Bad command */
@@ -1093,7 +1096,7 @@ static inline int lpc43_rominit(FAR struct lpc43_dev_s *priv)
   fvdbg("   blksize: %08x\n", priv->blksize);
   fvdbg("   nblocks: %d\n", priv->nblocks);
 
-#if CONFIG_SPIFI_SECTOR512
+#ifdef CONFIG_SPIFI_SECTOR512
   DEBUGASSERT(log2 > 9);
 #endif
 
@@ -1156,7 +1159,7 @@ FAR struct mtd_dev_s *lpc43_spifi_initialize(void)
 
   priv->operands.protect = -1;              /* Save and restore protection */
   priv->operands.options = S_CALLER_ERASE;  /* This driver will do erasure */
-  
+
   /* Initialize the SPIFI.  Interrupts must be disabled here because shared
    * CGU registers will be modified.
    */
@@ -1182,10 +1185,10 @@ FAR struct mtd_dev_s *lpc43_spifi_initialize(void)
   /* Initialize the SPIFI ROM driver */
 
   ret = lpc43_rominit(priv);
-   if (ret != OK)
-     {
-       return NULL;
-     }
+  if (ret != OK)
+    {
+      return NULL;
+    }
 
   /* Check if we need to emulator a 512 byte sector */
 
@@ -1193,7 +1196,7 @@ FAR struct mtd_dev_s *lpc43_spifi_initialize(void)
 
   /* Allocate a buffer for the erase block cache */
 
-  priv->cache = (FAR uint8_t *)kmalloc(SPIFI_BLKSIZE);
+  priv->cache = (FAR uint8_t *)kmm_malloc(SPIFI_BLKSIZE);
   if (!priv->cache)
     {
       /* Allocation failed! Discard all of that work we just did and return NULL */
@@ -1230,7 +1233,7 @@ void pullMISO(int high)
 
   /* Control MISO pull-up/down state  Assume pull down by clearing:
    *
-   *  EPD = Enable pull-down connect (bit 
+   *  EPD = Enable pull-down connect (bit
    */
 
   pinconfig = PINCONF_SPIFI_MISO & ~(PINCONF_PULLUP | PINCONF_PULLDOWN);

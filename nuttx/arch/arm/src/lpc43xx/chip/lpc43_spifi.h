@@ -1,7 +1,7 @@
 /****************************************************************************
  *  arch/arm/src/lpc43/chip/lpc43_spifi.h
  *
- *   Copyright (C) 2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2012, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -71,6 +71,29 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
+
+/* Register addresses ***************************************************************/
+
+#define LPC43_SPIFI_CTRL_OFFSET     0x000
+#define LPC43_SPIFI_CMD_OFFSET      0x004
+#define LPC43_SPIFI_ADDR_OFFSET     0x008
+#define LPC43_SPIFI_IDATA_OFFSET    0x00C
+#define LPC43_SPIFI_CLIMIT_OFFSET   0x010
+#define LPC43_SPIFI_DATA_OFFSET     0x014
+#define LPC43_SPIFI_MCMD_OFFSET     0x018
+#define LPC43_SPIFI_STAT_OFFSET     0x01C
+
+
+#define LPC43_SPIFI_CTRL          (LPC43_SPIFI_BASE+LPC43_SPIFI_CTRL_OFFSET)
+#define LPC43_SPIFI_CMD           (LPC43_SPIFI_BASE+LPC43_SPIFI_CMD_OFFSET)
+#define LPC43_SPIFI_ADDR          (LPC43_SPIFI_BASE+LPC43_SPIFI_ADDR_OFFSET)
+#define LPC43_SPIFI_IDATA         (LPC43_SPIFI_BASE+LPC43_SPIFI_IDATA_OFFSET)
+#define LPC43_SPIFI_CLIMIT        (LPC43_SPIFI_BASE+LPC43_SPIFI_CLIMIT_OFFSET)
+#define LPC43_SPIFI_DATA          (LPC43_SPIFI_BASE+LPC43_SPIFI_DATA_OFFSET)
+#define LPC43_SPIFI_MCMD          (LPC43_SPIFI_BASE+LPC43_SPIFI_MCMD_OFFSET)
+#define LPC43_SPIFI_STAT          (LPC43_SPIFI_BASE+LPC43_SPIFI_STAT_OFFSET)
+
+
 /* The largest protection block of any serial flash that the ROM driver
  * can handle
  */
@@ -88,7 +111,7 @@
 #define SPIFI_PROG_INST         2
 #define SPIFI_CHIP_ERASE        3
 
-/* Bit definitions in options operands (MODE3, RCVCLK, and FULLCLK 
+/* Bit definitions in options operands (MODE3, RCVCLK, and FULLCLK
  * have the same relationship as in the Control register)
  */
 
@@ -117,7 +140,7 @@
 
 /* SPI ROM driver table pointer */
 
-#define SPIFI_ROM_PTR LPC43_ROM_DRIVER_TABLE6 
+#define SPIFI_ROM_PTR LPC43_ROM_DRIVER_TABLE6
 #define pSPIFI *((struct spifi_driver_s **)SPIFI_ROM_PTR)
 
 /****************************************************************************
@@ -249,7 +272,8 @@ struct spifi_driver_s
 #undef EXTERN
 #if defined(__cplusplus)
 #define EXTERN extern "C"
-extern "C" {
+extern "C"
+{
 #else
 #define EXTERN extern
 #endif
@@ -258,12 +282,12 @@ extern "C" {
  * Public Functions
  ****************************************************************************/
 
-EXTERN int32_t spifi_init(struct spifi_dev_s *dev, uint32_t cshigh,
+int32_t spifi_init(struct spifi_dev_s *dev, uint32_t cshigh,
                    uint32_t options, uint32_t mhz);
-EXTERN int32_t spifi_program(struct spifi_dev_s *dev, const uint8_t *source,
-                   struct spifi_operands_s *opers);
-EXTERN int32_t spifi_erase(struct spifi_dev_s *dev,
-                   struct spifi_operands_s *opers);
+int32_t spifi_program(struct spifi_dev_s *dev, const uint8_t *source,
+                      struct spifi_operands_s *opers);
+int32_t spifi_erase(struct spifi_dev_s *dev,
+                    struct spifi_operands_s *opers);
 
 #undef EXTERN
 #ifdef __cplusplus

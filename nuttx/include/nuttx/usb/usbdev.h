@@ -1,7 +1,7 @@
 /************************************************************************************
  * include/nuttx/usb/usbdev.h
  *
- *   Copyright (C) 2008-2010, 2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2008-2010, 2012-2013 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * NOTE:  This interface was inspired by the Linux gadget interface by
@@ -86,8 +86,8 @@
 /* Allocate/free an I/O buffer.  Should not be called from interrupt processing! */
 
 #ifdef CONFIG_USBDEV_DMA
-#  define EP_ALLOCBUFFER(ep,nb)    (ep)->ops->alloc(ep,nb)
-#  define EP_FREEBUFFER(ep,buff)   (ep)->ops->free(ep,buf)
+#  define EP_ALLOCBUFFER(ep,nb)    (ep)->ops->allocbuffer(ep,nb)
+#  define EP_FREEBUFFER(ep,buf)    (ep)->ops->freebuffer(ep,buf)
 #else
 #  define EP_ALLOCBUFFER(ep,nb)    malloc(nb)
 #  define EP_FREEBUFFER(ep,buf)    free(buf)
@@ -152,7 +152,7 @@
 #define DEV_DISCONNECT(dev)        (dev)->ops->pullup ? (dev)->ops->pullup(dev,false) : -EOPNOTSUPP
 
 /* USB Class Driver Helpers *********************************************************/
-/* All may be called from interupt handling logic except bind() and unbind() */
+/* All may be called from interrupt handling logic except bind() and unbind() */
 
 /* Invoked when the driver is bound to a USB device driver. */
 
@@ -181,13 +181,9 @@
 #define CLASS_RESUME(drvr,dev)  \
   do { if ((drvr)->ops->resume) (drvr)->ops->resume(drvr,dev); } while (0)
 
-/* Device speeds */
+/* Maximum size of a request buffer */
 
-#define USB_SPEED_UNKNOWN         0 /* Transfer rate not yet set */
-#define USB_SPEED_LOW             1 /* USB 1.1 */
-#define USB_SPEED_FULL            2 /* USB 1.1 */
-#define USB_SPEED_HIGH            3 /* USB 2.0 */
-#define USB_SPEED_VARIABLE        4 /* Wireless USB 2.5 */
+#define USBDEV_MAXREQUEUST        UINT16_MAX
 
 /* Request flags */
 
@@ -340,7 +336,7 @@ extern "C"
  *
  ************************************************************************************/
 
-EXTERN int usbdev_register(FAR struct usbdevclass_driver_s *driver);
+int usbdev_register(FAR struct usbdevclass_driver_s *driver);
 
 /************************************************************************************
  * Name: usbdev_unregister
@@ -352,7 +348,7 @@ EXTERN int usbdev_register(FAR struct usbdevclass_driver_s *driver);
  *
  ************************************************************************************/
 
-EXTERN int usbdev_unregister(FAR struct usbdevclass_driver_s *driver);
+int usbdev_unregister(FAR struct usbdevclass_driver_s *driver);
 
 /****************************************************************************
  * Name: usbdev_dma_alloc and usbdev_dma_free
@@ -374,15 +370,15 @@ EXTERN int usbdev_unregister(FAR struct usbdevclass_driver_s *driver);
  *   called to free the DMA-capable memory.
  *
  *   This functions may be simple wrappers around gran_alloc() and
- *   gran_free() (See nuttx/gran.h).  Note that the gran_free() function
+ *   gran_free() (See nuttx/mm/gran.h).  Note that the gran_free() function
  *   does require the size of the allocation to be freed; that would need
  *   to be managed in the board-specific logic.
  *
  ****************************************************************************/
 
 #if defined(CONFIG_USBDEV_DMA) && defined(CONFIG_USBDEV_DMAMEMORY)
-EXTERN FAR void *usbdev_dma_alloc(size_t size);
-EXTERN void usbdev_dma_free(FAR void *memory);
+FAR void *usbdev_dma_alloc(size_t size);
+void usbdev_dma_free(FAR void *memory);
 #endif
 
 #undef EXTERN
