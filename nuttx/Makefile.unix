@@ -106,7 +106,7 @@ endif
 #   be cleaned to prevent garbarge from collecting in them when changing
 #   configurations.
 
-NONFSDIRS = sched $(ARCH_SRC) $(NUTTX_ADDONS)
+NONFSDIRS = sched configs $(ARCH_SRC) $(NUTTX_ADDONS)
 FSDIRS = fs drivers binfmt
 CONTEXTDIRS = $(APPDIR)
 USERDIRS =

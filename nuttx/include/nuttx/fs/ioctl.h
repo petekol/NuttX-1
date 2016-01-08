@@ -70,6 +70,10 @@
 #define _SLCDIOCBASE    (0x1100) /* Segment LCD ioctl commands */
 #define _WLIOCBASE      (0x1100) /* Wireless modules ioctl commands */
 
+/* boardctl commands share the same number space */
+
+#define _BOARDBASE      (0xff00) /* boardctl commands */
+
 /* Macros used to manage ioctl commands */
 
 #define _IOC_MASK       (0x00ff)
@@ -262,6 +266,11 @@
 
 #define _WLIOCVALID(c)     (_IOC_TYPE(c)==_WLIOCBASE)
 #define _WLIOC(nr)         _IOC(_WLIOCBASE,nr)
+
+/* boardctl() command definitions *******************************************/
+
+#define _BOARDIOCVALID(c) (_IOC_TYPE(c)==_BOARDBASE)
+#define _BOARDIOC(nr)     _IOC(_BOARDBASE,nr)
 
 /****************************************************************************
  * Public Type Definitions
