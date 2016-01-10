@@ -202,7 +202,7 @@ NUTTXLIBS += lib\libkarch$(LIBEXT)
 USERLIBS  += lib\libproxies$(LIBEXT) lib\libuc$(LIBEXT) lib\libumm$(LIBEXT)
 USERLIBS  += lib\libuarch$(LIBEXT)
 else
-NUTTXLIBS += lib\libc$(LIBEXT) lib\libmm$(LIBEXT) lib\libarch$(LIBEXT)
+NUTTXLIBS += lib\libc$(LIBEXT) lib\libmm$(LIBEXT) lib\libarch$(LIBEXT) lib\libconfigs$(LIBEXT)
 endif
 
 # Add libraries for C++ support.  CXX, CXXFLAGS, and COMPILEXX must
@@ -607,6 +607,12 @@ $(ARCH_SRC)\libarch$(LIBEXT): context
 lib\libarch$(LIBEXT): $(ARCH_SRC)\libarch$(LIBEXT)
 	$(Q) install $(ARCH_SRC)\libarch$(LIBEXT) lib\libarch$(LIBEXT)
 
+configs\libconfigs$(LIBEXT): context
+	$(Q) $(MAKE) -C configs TOPDIR="$(TOPDIR)" libconfigs$(LIBEXT)
+
+lib\libconfigs$(LIBEXT): configs\libconfigs$(LIBEXT)
+	$(Q) install configs\libconfigs$(LIBEXT) lib\libconfigs$(LIBEXT)
+	
 # pass1 and pass2
 #
 # If the 2 pass build option is selected, then this pass1 target is
