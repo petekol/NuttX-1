@@ -242,9 +242,9 @@ static const struct uart_ops_s g_uartops =
   NULL,                  /* receive */
   cdcuart_rxint,         /* rxinit */
   NULL,                  /* rxavailable */
-#ifdef CONFIG_SERIAL_IFLOWCONTROL
-  cdcuart_rxflowcontrol, /* rxflowcontrol */
-#endif
+//#ifdef CONFIG_SERIAL_IFLOWCONTROL
+//  cdcuart_rxflowcontrol, /* rxflowcontrol */
+//#endif
   NULL,                  /* send */
   cdcuart_txint,         /* txinit */
   NULL,                  /* txready */
